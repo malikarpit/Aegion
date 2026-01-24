@@ -1,0 +1,18 @@
+# Aegion Backend - Production Dependencies
+# Generated from pyproject.toml to support non-Poetry builds
+# Install: pip install -r requirements.txt
+
+fastapi>=0.115.0,<1.0.0
+uvicorn>=0.32.0,<1.0.0
+google-cloud-firestore>=2.19.0,<3.0.0
+google-cloud-logging>=3.11.0,<4.0.0
+firebase-admin>=6.5.0,<7.0.0
+pydantic>=2.10.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
+langgraph>=0.2.0,<1.0.0
+google-generativeai>=0.8.0,<1.0.0
+httpx>=0.27.0,<1.0.0
+google-cloud-storage>=2.18.0,<3.0.0
+psutil>=5.9.0
+neo4j>=5.20.0,<6.0.0
+prometheus-client>=0.17.0,<1.0.0
