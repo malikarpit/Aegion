@@ -1,0 +1,144 @@
+# Aegion Development Stack
+# Run: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Aegion Backend API
+  # ============================================
+  backend:
+    build:
+      context: ./aegion-backend
+      dockerfile: Dockerfile
+    container_name: aegion-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PORT=8080
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-aegion-dev}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-aegion-dev}
+      # Graph backend
+      - GRAPH_BACKEND=${GRAPH_BACKEND:-neo4j}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-aegion-dev-password}
+      # Secrets (from .env or secrets manager)
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcloud-key.json
+    volumes:
+      # Mount Google Cloud credentials for local dev
+      - ${GCLOUD_KEY_PATH:-./secrets/gcloud-key.json}:/secrets/gcloud-key.json:ro
+      # Mount source for hot reload in dev
+      - ./aegion-backend/app:/app/app:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/api/v1/health/ready" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - aegion-network
+    restart: unless-stopped
+
+  # ============================================
+  # Aegion Frontend Dashboard
+  # ============================================
+  frontend:
+    build:
+      context: ./aegion-frontend
+      dockerfile: Dockerfile
+    container_name: aegion-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8080/api/v1
+      - NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY:-}
+      - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-}
+      - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-aegion-dev}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - aegion-network
+    restart: unless-stopped
+
+  # ============================================
+  # Redis (Session Cache & Rate Limiting)
+  # ============================================
+  redis:
+    image: redis:7.4-alpine3.20
+    container_name: aegion-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    networks:
+      - aegion-network
+    restart: unless-stopped
+
+  # ============================================
+  # Neo4j (Knowledge Graph)
+  # ============================================
+  neo4j:
+    image: neo4j:5.26.0-community
+    container_name: aegion-neo4j
+    ports:
+      - "7474:7474" # Browser UI
+      - "7687:7687" # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-aegion-dev-password}
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+      - NEO4J_server_memory_heap_initial__size=256m
+      - NEO4J_server_memory_heap_max__size=512m
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider localhost:7474 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    networks:
+      - aegion-network
+    restart: unless-stopped
+
+networks:
+  aegion-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  neo4j-data:
+  neo4j-logs:

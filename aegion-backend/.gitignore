@@ -1,0 +1,85 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# === Environment ===
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# === Testing & Coverage ===
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.junit/
+test_output.txt
+test_output_*.txt
+
+# === IDE & OS ===
+.vscode/
+.idea/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+
+# === Project Specific ===
+# Local data store
+.aegion_data/
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# === Documentation (Optional, but often built) ===
+site/
+_build/
+
+# === Terraform (if any) ===
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# === Node/JS ===
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
