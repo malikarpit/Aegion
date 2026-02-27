@@ -1,0 +1,44 @@
+{
+    "_comment": "Aegion Sandbox Network Egress Policy — Enterprise Hardening",
+    "_description": "Defines allowed network egress for sandbox containers. Default: DNS only.",
+    "version": "1.0",
+    "default_action": "DENY",
+    "rules": [
+        {
+            "name": "dns_resolution",
+            "protocol": "udp",
+            "port": 53,
+            "direction": "egress",
+            "action": "ALLOW",
+            "description": "Allow DNS resolution for sandboxed code"
+        },
+        {
+            "name": "dns_tcp_fallback",
+            "protocol": "tcp",
+            "port": 53,
+            "direction": "egress",
+            "action": "ALLOW",
+            "description": "Allow TCP DNS for large responses"
+        }
+    ],
+    "workspace_overrides": {
+        "_comment": "Per-workspace domain allowlists (managed via admin API)",
+        "example_workspace_id": {
+            "allowed_domains": [
+                "api.openai.com",
+                "api.anthropic.com"
+            ],
+            "max_egress_mb": 10,
+            "timeout_sec": 30
+        }
+    },
+    "enforcement": {
+        "docker_network_mode": "none",
+        "docker_network_mode_with_egress": "aegion-sandbox-net",
+        "iptables_rules": [
+            "-A OUTPUT -p udp --dport 53 -j ACCEPT",
+            "-A OUTPUT -p tcp --dport 53 -j ACCEPT",
+            "-A OUTPUT -j REJECT"
+        ]
+    }
+}
