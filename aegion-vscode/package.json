@@ -1,0 +1,40 @@
+{
+    "name": "aegion-vscode",
+    "displayName": "Aegion: Governed AI Assistant",
+    "description": "A governed multi-agent AI council for enterprise coding.",
+    "version": "0.1.0",
+    "publisher": "aegion",
+    "license": "MIT",
+    "icon": "resources/aegion-icon.png",
+    "engines": { "vscode": "^1.85.0" },
+    "categories": ["Machine Learning", "Programming Languages", "Other"],
+    "activationEvents": ["onStartupFinished"],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            { "command": "aegion.startSession", "title": "Aegion: Start Session" },
+            { "command": "aegion.closeSession", "title": "Aegion: Close Session" },
+            { "command": "aegion.invokeCouncil", "title": "Aegion: Invoke AI Council" },
+            { "command": "aegion.createProposal", "title": "Aegion: Create Proposal" },
+            { "command": "aegion.openDashboard", "title": "Aegion: Open Dashboard" }
+        ],
+        "configuration": {
+            "title": "Aegion",
+            "properties": {
+                "aegion.backendUrl": { "type": "string", "default": "http://localhost:8000" }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "webpack",
+        "watch": "webpack --watch"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@types/vscode": "^1.85.0",
+        "typescript": "^5.3.2",
+        "webpack": "^5.89.0",
+        "webpack-cli": "^5.1.4",
+        "ts-loader": "^9.5.1"
+    }
+}
