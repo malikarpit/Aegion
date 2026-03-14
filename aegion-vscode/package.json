@@ -1,40 +1,398 @@
 {
     "name": "aegion-vscode",
     "displayName": "Aegion: Governed AI Assistant",
-    "description": "A governed multi-agent AI council for enterprise coding.",
+    "description": "A governed multi-agent AI council that turns coding decisions into lasting architectural memory. Enterprise-ready governance.",
     "version": "0.1.0",
     "publisher": "aegion",
     "license": "MIT",
     "icon": "resources/aegion-icon.png",
-    "engines": { "vscode": "^1.85.0" },
-    "categories": ["Machine Learning", "Programming Languages", "Other"],
-    "activationEvents": ["onStartupFinished"],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/aegion/aegion-vscode"
+    },
+    "homepage": "https://aegion.io",
+    "bugs": {
+        "url": "https://github.com/aegion/aegion-vscode/issues"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Machine Learning",
+        "Programming Languages",
+        "Other"
+    ],
+    "keywords": [
+        "ai",
+        "copilot",
+        "governance",
+        "code review",
+        "decision tracking",
+        "enterprise",
+        "audit",
+        "ai assistant"
+    ],
+    "galleryBanner": {
+        "color": "#1a1a2e",
+        "theme": "dark"
+    },
+    "badges": [
+        {
+            "url": "https://img.shields.io/badge/Version-0.1.0-blue",
+            "href": "https://github.com/aegion/aegion-vscode/releases",
+            "description": "Version"
+        }
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
     "main": "./out/extension.js",
     "contributes": {
-        "commands": [
-            { "command": "aegion.startSession", "title": "Aegion: Start Session" },
-            { "command": "aegion.closeSession", "title": "Aegion: Close Session" },
-            { "command": "aegion.invokeCouncil", "title": "Aegion: Invoke AI Council" },
-            { "command": "aegion.createProposal", "title": "Aegion: Create Proposal" },
-            { "command": "aegion.openDashboard", "title": "Aegion: Open Dashboard" }
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "aegion-sidebar",
+                    "title": "Aegion",
+                    "icon": "resources/aegion-icon.svg"
+                }
+            ]
+        },
+        "views": {
+            "aegion-sidebar": [
+                {
+                    "id": "aegion.views.context",
+                    "name": "Context & Intent",
+                    "icon": "$(comment-discussion)",
+                    "contextualTitle": "Current Session"
+                },
+                {
+                    "id": "aegion.views.governance",
+                    "name": "Governance Queue",
+                    "icon": "$(law)",
+                    "when": "aegion.sessionActive"
+                },
+                {
+                    "id": "aegion.views.system",
+                    "name": "System Status",
+                    "icon": "$(pulse)"
+                },
+                {
+                    "id": "aegion.views.participants",
+                    "name": "Session Participants",
+                    "icon": "$(organization)",
+                    "when": "aegion.sessionActive"
+                },
+                {
+                    "id": "aegion.recoveryView",
+                    "name": "Session Recovery",
+                    "icon": "$(history)",
+                    "contextualTitle": "Recovery"
+                },
+                {
+                    "id": "aegion.modelSettingsView",
+                    "name": "Model Settings",
+                    "icon": "$(settings-gear)",
+                    "contextualTitle": "Models & Optimization"
+                }
+            ]
+        },
+        "walkthroughs": [
+            {
+                "id": "aegion.walkthrough.welcome",
+                "title": "Welcome to Aegion",
+                "description": "Get started with AI-Native Governance",
+                "steps": [
+                    {
+                        "id": "connect",
+                        "title": "Connect Backend",
+                        "description": "Ensure the Aegion Brain is running locally or remotely.\n[Check Connection](command:aegion.openSystemHealth)",
+                        "media": {
+                            "image": "resources/walkthrough/connect.png",
+                            "altText": "Connection Diagram"
+                        }
+                    },
+                    {
+                        "id": "role",
+                        "title": "Set Your Role",
+                        "description": "Are you a Developer, Architect, or Admin?\n[Set Role](command:aegion.setRole)",
+                        "media": {
+                            "image": "resources/walkthrough/role.png",
+                            "altText": "Role Selection"
+                        }
+                    },
+                    {
+                        "id": "session",
+                        "title": "Start a Session",
+                        "description": "Governance happens in sessions.\n[Start Session](command:aegion.startSession)",
+                        "media": {
+                            "image": "resources/walkthrough/session.png",
+                            "altText": "Start Session"
+                        }
+                    }
+                ]
+            }
         ],
+        "commands": [
+            {
+                "command": "aegion.startSession",
+                "title": "Aegion: Start Session"
+            },
+            {
+                "command": "aegion.closeSession",
+                "title": "Aegion: Close Session"
+            },
+            {
+                "command": "aegion.showSessionMenu",
+                "title": "Aegion: Session Menu"
+            },
+            {
+                "command": "aegion.setAuthToken",
+                "title": "Aegion: Set Auth Token"
+            },
+            {
+                "command": "aegion.createProposal",
+                "title": "Aegion: Create Proposal"
+            },
+            {
+                "command": "aegion.promoteDecision",
+                "title": "Aegion: Promote Decision (T1)"
+            },
+            {
+                "command": "aegion.invokeCouncil",
+                "title": "Aegion: Invoke AI Council"
+            },
+            {
+                "command": "aegion.approveProposal",
+                "title": "Aegion: Approve Proposal"
+            },
+            {
+                "command": "aegion.setRole",
+                "title": "Aegion: Set Governance Role"
+            },
+            {
+                "command": "aegion.rejectDecision",
+                "title": "Aegion: Reject Proposal"
+            },
+            {
+                "command": "aegion.supersedeDecision",
+                "title": "Aegion: Supersede Decision"
+            },
+            {
+                "command": "aegion.generateADR",
+                "title": "Aegion: Generate ADR"
+            },
+            {
+                "command": "aegion.queryMemory",
+                "title": "Aegion: Query Memory"
+            },
+            {
+                "command": "aegion.showADRGraph",
+                "title": "Aegion: Show ADR Graph"
+            },
+            {
+                "command": "aegion.chronos.refresh",
+                "title": "Aegion: Refresh Chronos"
+            },
+            {
+                "command": "aegion.openCloudDelegate",
+                "title": "Aegion: Open Cloud Delegate"
+            },
+            {
+                "command": "aegion.sentinel.refresh",
+                "title": "Aegion: Refresh Sentinel Health"
+            },
+            {
+                "command": "aegion.openAuditLog",
+                "title": "Aegion: Open Audit Log"
+            },
+            {
+                "command": "aegion.openAdminDashboard",
+                "title": "Aegion: Open Admin Dashboard"
+            },
+            {
+                "command": "aegion.openMultiFileReview",
+                "title": "Aegion: Open Multi-File Review"
+            },
+            {
+                "command": "aegion.openWarRoom",
+                "title": "Aegion: Open War Room"
+            },
+            {
+                "command": "aegion.openDashboard",
+                "title": "Aegion: Open Dashboard"
+            },
+            {
+                "command": "aegion.openCollaboration",
+                "title": "Aegion: Open Collaboration Panel"
+            },
+            {
+                "command": "aegion.openGovernanceCenter",
+                "title": "Aegion: Open Governance Center"
+            },
+            {
+                "command": "aegion.openSkillCatalog",
+                "title": "Aegion: Open Skill Catalog"
+            },
+            {
+                "command": "aegion.openTimeline",
+                "title": "Aegion: Open Timeline"
+            },
+            {
+                "command": "aegion.openCheckpoints",
+                "title": "Aegion: Open Checkpoints"
+            },
+            {
+                "command": "aegion.openObservability",
+                "title": "Aegion: Open Observability"
+            },
+            {
+                "command": "aegion.openTaskInbox",
+                "title": "Aegion: Open Task Inbox"
+            },
+            {
+                "command": "aegion.openSessionExplorer",
+                "title": "Aegion: Open Session Explorer"
+            },
+            {
+                "command": "aegion.openMemoryRules",
+                "title": "Aegion: Open Memory Rules"
+            },
+            {
+                "command": "aegion.openSystemHealth",
+                "title": "Aegion: Open System Health"
+            },
+            {
+                "command": "aegion.showGovernancePolicy",
+                "title": "Aegion: Show Governance Policy"
+            },
+            {
+                "command": "aegion.lookupConcept",
+                "title": "Aegion: Lookup Concept"
+            },
+            {
+                "command": "aegion.chronos.openItem",
+                "title": "Aegion: Open Chronos Item"
+            },
+            {
+                "command": "aegion.recovery.recoverSession",
+                "title": "Aegion: Recover Session"
+            },
+            {
+                "command": "aegion.recovery.restoreDraft",
+                "title": "Aegion: Restore Draft"
+            },
+            {
+                "command": "aegion.recovery.deleteDraft",
+                "title": "Aegion: Delete Draft"
+            },
+            {
+                "command": "aegion.recovery.refresh",
+                "title": "Aegion: Refresh Recovery"
+            },
+            {
+                "command": "aegion.explainWhy",
+                "title": "Aegion: Explain Why"
+            },
+            {
+                "command": "aegion.showRationale",
+                "title": "Aegion: Show Rationale"
+            }
+        ],
+        "menus": {
+            "commandPalette": [
+                {
+                    "command": "aegion.openWarRoom",
+                    "when": "aegion.feature.war_room"
+                },
+                {
+                    "command": "aegion.generateADR",
+                    "when": "aegion.feature.generate_adr"
+                },
+                {
+                    "command": "aegion.openCloudDelegate",
+                    "when": "aegion.feature.cloud_delegate"
+                },
+                {
+                    "command": "aegion.openMemoryRules",
+                    "when": "aegion.mode.advanced"
+                }
+            ]
+        },
         "configuration": {
             "title": "Aegion",
             "properties": {
-                "aegion.backendUrl": { "type": "string", "default": "http://localhost:8000" }
+                "aegion.backendUrl": {
+                    "type": "string",
+                    "default": "http://localhost:8000",
+                    "description": "Base URL of the Aegion backend API server. For local development: http://localhost:8000. For remote/team deployments, set to your server URL (e.g., https://api.aegion.io). Do NOT include trailing slashes or path prefixes — the client adds /api/v1 automatically.",
+                    "pattern": "^https?://",
+                    "examples": [
+                        "http://localhost:8000",
+                        "https://aegion.your-company.com",
+                        "http://192.168.1.100:8000"
+                    ]
+                },
+                "aegion.authToken": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Firebase auth token for backend API authentication. Required for all API calls. Leave empty for local development with auth disabled.",
+                    "scope": "window"
+                },
+                "aegion.autoStartSession": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically start a session when VS Code opens"
+                },
+                "aegion.clientGenerationMode": {
+                    "type": "string",
+                    "default": "automatic-with-review",
+                    "enum": [
+                        "manual",
+                        "automatic",
+                        "automatic-with-review"
+                    ],
+                    "enumDescriptions": [
+                        "Keep hand-written client.ts as-is. No auto-generation.",
+                        "Run generate-client.sh on build; overwrite generated types/endpoints.",
+                        "Generate into src/api/generated/, show diff for user approval before merging."
+                    ],
+                    "description": "How API client types and endpoints are generated from the backend OpenAPI spec."
+                }
             }
         }
     },
     "scripts": {
+        "vscode:prepublish": "npm run package",
         "compile": "webpack",
-        "watch": "webpack --watch"
+        "watch": "webpack --watch",
+        "package": "webpack --mode production --devtool hidden-source-map",
+        "compile-tests": "tsc -p . --outDir out",
+        "watch-tests": "tsc -p . -w --outDir out",
+        "pretest": "npm run compile-tests && npm run compile && npm run lint",
+        "lint": "eslint src --ext ts",
+        "test": "node ./out/test/runTest.js"
     },
     "devDependencies": {
-        "@types/node": "^20.10.0",
+        "@types/glob": "^8.1.0",
+        "@types/mocha": "^10.0.6",
+        "@types/node": "^20.19.33",
         "@types/vscode": "^1.85.0",
-        "typescript": "^5.3.2",
-        "webpack": "^5.89.0",
-        "webpack-cli": "^5.1.4",
-        "ts-loader": "^9.5.1"
+        "@types/ws": "^8.18.1",
+        "@typescript-eslint/eslint-plugin": "^6.19.0",
+        "@typescript-eslint/parser": "^6.19.0",
+        "@vscode/test-electron": "^2.5.2",
+        "eslint": "^8.56.0",
+        "glob": "^10.3.10",
+        "mocha": "^10.2.0",
+        "ts-loader": "^9.5.1",
+        "typescript": "^5.3.3",
+        "webpack": "^5.90.0",
+        "webpack-cli": "^5.1.4"
+    },
+    "dependencies": {
+        "axios": "^1.6.7",
+        "eventsource-polyfill": "^0.9.6",
+        "firebase": "^10.8.0",
+        "ws": "^8.19.0"
     }
 }
