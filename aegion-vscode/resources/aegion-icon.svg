@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="aegion-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4fc3f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7c4dff;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1a1a2e"/>
+  
+  <!-- Outer ring -->
+  <circle cx="64" cy="64" r="56" fill="none" stroke="url(#aegion-grad)" stroke-width="3" opacity="0.6"/>
+  
+  <!-- Shield shape -->
+  <path d="M64 20 L100 35 L100 65 C100 90 64 108 64 108 C64 108 28 90 28 65 L28 35 Z" 
+        fill="none" stroke="url(#aegion-grad)" stroke-width="4" filter="url(#glow)"/>
+  
+  <!-- Inner A letterform -->
+  <path d="M64 35 L48 85 M64 35 L80 85 M52 70 L76 70" 
+        fill="none" stroke="url(#aegion-grad)" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
+  
+  <!-- AI brain nodes -->
+  <circle cx="45" cy="50" r="4" fill="#4fc3f7" opacity="0.8"/>
+  <circle cx="83" cy="50" r="4" fill="#7c4dff" opacity="0.8"/>
+  <circle cx="64" cy="95" r="4" fill="#4fc3f7" opacity="0.8"/>
+  
+  <!-- Connection lines -->
+  <line x1="45" y1="50" x2="64" y2="35" stroke="#4fc3f7" stroke-width="1" opacity="0.4"/>
+  <line x1="83" y1="50" x2="64" y2="35" stroke="#7c4dff" stroke-width="1" opacity="0.4"/>
+</svg>

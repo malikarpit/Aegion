@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+out/test/**
+src/**
+scripts/**
+.gitignore
+.yarnrc
+.eslintrc.json
+**/*.map
+**/*.ts
+compile_log.txt
+tsconfig.json
+webpack.config.js
+node_modules/**
+.aegion_diffs/**
