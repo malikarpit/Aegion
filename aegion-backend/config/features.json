@@ -1,0 +1,11 @@
+{
+    "war_room": {
+        "enabled": false
+    },
+    "game_snake": {
+        "enabled": false
+    },
+    "cloud_delegate": {
+        "enabled": false
+    }
+}
