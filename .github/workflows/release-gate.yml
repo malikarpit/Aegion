@@ -1,0 +1,64 @@
+name: Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Version to release (e.g. v1.0.0)'
+        required: true
+
+permissions: read-all
+
+jobs:
+  backend-gate:
+    name: Backend Gate
+    needs: governance-gate
+    uses: aegion/aegion/.github/workflows/backend-ci.yml@main
+
+  extension-gate:
+    name: Extension Gate
+    needs: governance-gate
+    uses: aegion/aegion/.github/workflows/extension-ci.yml@main
+
+  governance-gate:
+    name: Governance Invariant Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Verify Governance Invariants
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/verify_governance_invariants.py --repo ${{ github.repository }}
+
+  security-scan:
+    name: Security Scan
+    needs: governance-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Trivy Scan (Filesystem)
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  release-ready:
+    name: Release Ready
+    needs: [backend-gate, extension-gate, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Readiness Check
+        run: echo "All gates passed. Ready for release ${{ inputs.release_version }}"

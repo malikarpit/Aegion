@@ -1,0 +1,49 @@
+name: QA Quarantine Check
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Run daily at 8am UTC
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./aegion-backend
+
+jobs:
+  test-quarantine:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aegion_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run Quarantined Tests
+        # We assume quarantined tests are moved to tests/quarantine folder
+        # or marked with @pytest.mark.quarantine
+        # Using folder approach as planned
+        run: |
+          if [ -d "tests/quarantine" ]; then
+            pytest tests/quarantine || echo "Quarantine tests failed (expected)"
+          else
+            echo "No quarantined tests found."
+          fi
