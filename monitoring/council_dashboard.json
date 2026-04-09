@@ -1,0 +1,80 @@
+{
+    "displayName": "Aegion - Council Overview",
+    "gridLayout": {
+        "columns": "2",
+        "widgets": [
+            {
+                "title": "Council Service Latency (p95)",
+                "xyChart": {
+                    "dataSets": [
+                        {
+                            "timeSeriesQuery": {
+                                "timeSeriesFilter": {
+                                    "filter": "metric.type=\"logging.googleapis.com/user/aegion/council_latency\" resource.type=\"global\"",
+                                    "aggregation": {
+                                        "perSeriesAligner": "ALIGN_DELTA",
+                                        "crossSeriesReducer": "REDUCE_PERCENTILE_95",
+                                        "alignmentPeriod": "60s"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "title": "Council Error Rate",
+                "xyChart": {
+                    "dataSets": [
+                        {
+                            "timeSeriesQuery": {
+                                "timeSeriesFilter": {
+                                    "filter": "metric.type=\"logging.googleapis.com/user/aegion/council_errors\" resource.type=\"global\"",
+                                    "aggregation": {
+                                        "perSeriesAligner": "ALIGN_RATE",
+                                        "crossSeriesReducer": "REDUCE_SUM",
+                                        "alignmentPeriod": "60s"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "title": "Governance Block Rate",
+                "xyChart": {
+                    "dataSets": [
+                        {
+                            "timeSeriesQuery": {
+                                "timeSeriesFilter": {
+                                    "filter": "metric.type=\"logging.googleapis.com/user/aegion/governance_blocks\" resource.type=\"global\"",
+                                    "aggregation": {
+                                        "perSeriesAligner": "ALIGN_RATE",
+                                        "crossSeriesReducer": "REDUCE_SUM",
+                                        "alignmentPeriod": "60s"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "title": "Active Council Sessions",
+                "scorecard": {
+                    "timeSeriesQuery": {
+                        "timeSeriesFilter": {
+                            "filter": "metric.type=\"logging.googleapis.com/user/aegion/active_sessions\" resource.type=\"global\"",
+                            "aggregation": {
+                                "perSeriesAligner": "ALIGN_MEAN",
+                                "crossSeriesReducer": "REDUCE_SUM",
+                                "alignmentPeriod": "60s"
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}

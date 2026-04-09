@@ -1,0 +1,36 @@
+# GCP Cloud Monitoring Alert Policies for Aegion Backend
+# Apply with: gcloud alpha monitoring policies create --policy-from-file=alerts.yaml
+
+displayName: "Aegion High Error Rate"
+combiner: OR
+conditions:
+  - displayName: "HTTP 5xx Error Rate > 5%"
+    conditionThreshold:
+      filter: >
+        resource.type="cloud_run_revision" AND
+        resource.labels.service_name="aegion-backend" AND
+        metric.type="run.googleapis.com/request_count" AND
+        metric.labels.response_code_class="5xx"
+      comparison: COMPARISON_GT
+      thresholdValue: 0.05
+      duration: 300s
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_RATE
+
+---
+displayName: "Aegion High Latency"
+combiner: OR
+conditions:
+  - displayName: "p95 Latency > 2s"
+    conditionThreshold:
+      filter: >
+        resource.type="cloud_run_revision" AND
+        resource.labels.service_name="aegion-backend" AND
+        metric.type="run.googleapis.com/request_latencies"
+      comparison: COMPARISON_GT
+      thresholdValue: 2000
+      duration: 300s
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_PERCENTILE_95
