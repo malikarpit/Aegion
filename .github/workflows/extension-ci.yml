@@ -1,16 +1,7 @@
 name: Extension CI
 
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'aegion-vscode/**'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'aegion-vscode/**'
   workflow_dispatch:
-  workflow_call: {}
 
 defaults:
   run:

@@ -1,8 +1,6 @@
 name: QA Quarantine Check
 
 on:
-  schedule:
-    - cron: '0 8 * * *' # Run daily at 8am UTC
   workflow_dispatch:
 
 defaults:

@@ -1,18 +1,7 @@
 name: Deploy to Production
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy_backend:
-        description: 'Deploy backend to Cloud Run'
-        type: boolean
-        default: true
-      deploy_frontend:
-        description: 'Deploy frontend to Firebase Hosting'
-        type: boolean
-        default: true
 
 # Prevent concurrent deploys stomping on each other
 concurrency:

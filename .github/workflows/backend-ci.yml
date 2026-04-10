@@ -1,16 +1,7 @@
 name: Backend CI
 
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'aegion-backend/**'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'aegion-backend/**'
   workflow_dispatch:
-  workflow_call: {}
 
 defaults:
   run:
