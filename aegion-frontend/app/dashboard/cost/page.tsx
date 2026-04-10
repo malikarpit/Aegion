@@ -49,10 +49,11 @@ function BarMiniChart({ data, color = "#3b82f6" }: { data: { day: string; cost: 
             {data.map((d, i) => (
                 <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
                     <div
-                        className="w-full rounded-t-md transition-all duration-500"
+                        className="bar-fill"
                         style={{
-                            height: `${(d.cost / max) * 100}%`,
-                            background: `linear-gradient(to top, ${color}40, ${color})`,
+                            /* eslint-disable-next-line react/forbid-dom-props */
+                            ['--bar-h' as string]: `${(d.cost / max) * 100}%`,
+                            ['--bar-color' as string]: color,
                         }}
                         data-delay={i * 80}
                     />

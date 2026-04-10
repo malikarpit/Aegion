@@ -154,7 +154,7 @@ function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange
         <button
             onClick={() => onChange(!enabled)}
             aria-label={label || "Toggle setting"}
-            aria-pressed={enabled}
+            aria-checked={enabled}
             role="switch"
             className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
                 enabled ? "bg-blue-600" : "bg-white/10"

@@ -60,7 +60,6 @@ export function ProgressRing({
                     strokeLinecap="round"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
-                    style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)" }}
                 />
             </svg>
             {/* Center text */}

@@ -361,3 +361,11 @@ body {
   background: var(--glass-bg-hover);
 }
 
+/* ── Bar Chart Fill (cost/page.tsx) ── */
+.bar-fill {
+  width: 100%;
+  height: var(--bar-h, 0%);
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bar-color, #3b82f6) 25%, transparent), var(--bar-color, #3b82f6));
+  transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
