@@ -151,21 +151,25 @@ const SECTIONS: SettingSection[] = [
 
 function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange: (v: boolean) => void; label?: string }) {
     return (
-        <button
-            onClick={() => onChange(!enabled)}
-            aria-label={label || "Toggle setting"}
-            aria-checked={enabled ? "true" : "false"}
-            role="switch"
-            className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+        <label className="relative inline-flex items-center cursor-pointer">
+            <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => onChange(e.target.checked)}
+                aria-label={label || "Toggle setting"}
+                className="sr-only"
+            />
+            <div className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
                 enabled ? "bg-blue-600" : "bg-white/10"
-            }`}
-        >
-            <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-lg transition-transform duration-200 ${
-                enabled ? "translate-x-5" : "translate-x-0"
-            }`} />
-        </button>
+            }`}>
+                <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-lg transition-transform duration-200 ${
+                    enabled ? "translate-x-5" : "translate-x-0"
+                }`} />
+            </div>
+        </label>
     );
 }
+
 
 function SettingControl({ item, onChange }: { item: SettingItem; onChange: (path: string, value: any) => void }) {
     switch (item.type) {
