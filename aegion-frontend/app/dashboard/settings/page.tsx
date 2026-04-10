@@ -149,10 +149,13 @@ const SECTIONS: SettingSection[] = [
 // Setting Controls
 // ──────────────────────────────────────────────────────────────────────────────
 
-function ToggleSwitch({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
+function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange: (v: boolean) => void; label?: string }) {
     return (
         <button
             onClick={() => onChange(!enabled)}
+            aria-label={label || "Toggle setting"}
+            aria-pressed={enabled}
+            role="switch"
             className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
                 enabled ? "bg-blue-600" : "bg-white/10"
             }`}
@@ -167,12 +170,14 @@ function ToggleSwitch({ enabled, onChange }: { enabled: boolean; onChange: (v: b
 function SettingControl({ item, onChange }: { item: SettingItem; onChange: (path: string, value: any) => void }) {
     switch (item.type) {
         case "toggle":
-            return <ToggleSwitch enabled={item.value} onChange={(v) => onChange(item.path, v)} />;
+            return <ToggleSwitch enabled={item.value} onChange={(v) => onChange(item.path, v)} label={item.label} />;
         case "select":
             return (
                 <select
                     value={item.value}
                     onChange={(e) => onChange(item.path, e.target.value)}
+                    aria-label={item.label}
+                    title={item.label}
                     className="glass-input px-3 py-1.5 text-sm min-w-[180px]"
                 >
                     {item.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -187,6 +192,8 @@ function SettingControl({ item, onChange }: { item: SettingItem; onChange: (path
                     min={item.min}
                     max={item.max}
                     step={item.step || 1}
+                    aria-label={item.label}
+                    title={item.label}
                     className="glass-input px-3 py-1.5 text-sm w-24 text-right tabular-nums"
                 />
             );
@@ -200,6 +207,8 @@ function SettingControl({ item, onChange }: { item: SettingItem; onChange: (path
                         min={item.min}
                         max={item.max}
                         step={item.step || 1}
+                        aria-label={item.label}
+                        title={item.label}
                         className="w-32 accent-blue-500"
                     />
                     <span className="text-sm text-white tabular-nums w-12 text-right">
@@ -213,6 +222,8 @@ function SettingControl({ item, onChange }: { item: SettingItem; onChange: (path
                     type="text"
                     value={item.value}
                     onChange={(e) => onChange(item.path, e.target.value)}
+                    aria-label={item.label}
+                    title={item.label}
                     className="glass-input px-3 py-1.5 text-sm w-48"
                 />
             );

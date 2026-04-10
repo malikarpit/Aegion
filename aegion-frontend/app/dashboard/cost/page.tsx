@@ -53,8 +53,8 @@ function BarMiniChart({ data, color = "#3b82f6" }: { data: { day: string; cost: 
                         style={{
                             height: `${(d.cost / max) * 100}%`,
                             background: `linear-gradient(to top, ${color}40, ${color})`,
-                            animationDelay: `${i * 80}ms`,
                         }}
+                        data-delay={i * 80}
                     />
                     <span className="text-[9px] text-slate-600">{d.day.split(" ")[1]}</span>
                 </div>
