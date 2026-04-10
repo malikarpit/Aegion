@@ -178,3 +178,184 @@ body {
   background: rgba(59, 130, 246, 0.3);
   color: white;
 }
+
+/* ══════════════════════════════════════════════
+   EXTENDED DESIGN SYSTEM — Premium Utilities
+   ══════════════════════════════════════════════ */
+
+/* ── Gradient Border ── */
+.gradient-border {
+  position: relative;
+  overflow: hidden;
+}
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gradient-primary);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+  pointer-events: none;
+}
+.gradient-border:hover::before { opacity: 1; }
+
+/* ── Skeleton Loading ── */
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--glass-bg) 25%,
+    rgba(255, 255, 255, 0.06) 50%,
+    var(--glass-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+  color: transparent !important;
+}
+.skeleton * { visibility: hidden; }
+
+/* ── Status Dot with Pulse ── */
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.3;
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+.status-dot.green { background: var(--success); }
+.status-dot.yellow { background: var(--warning); }
+.status-dot.red { background: var(--danger); }
+.status-dot.blue { background: var(--info); }
+
+/* ── Stagger Entrance Animations ── */
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.stagger-1 { animation: staggerIn 0.4s ease-out 0.05s both; }
+.stagger-2 { animation: staggerIn 0.4s ease-out 0.10s both; }
+.stagger-3 { animation: staggerIn 0.4s ease-out 0.15s both; }
+.stagger-4 { animation: staggerIn 0.4s ease-out 0.20s both; }
+.stagger-5 { animation: staggerIn 0.4s ease-out 0.25s both; }
+.stagger-6 { animation: staggerIn 0.4s ease-out 0.30s both; }
+.stagger-7 { animation: staggerIn 0.4s ease-out 0.35s both; }
+.stagger-8 { animation: staggerIn 0.4s ease-out 0.40s both; }
+
+/* ── Card Lift Effect ── */
+.card-lift {
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 40px -8px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ── Backdrop Overlay ── */
+.backdrop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 40;
+}
+
+/* ── Progress Ring (SVG) ── */
+@keyframes progressFill {
+  from { stroke-dashoffset: 283; }
+}
+
+/* ── Count-up Number ── */
+@keyframes numberPop {
+  0% { opacity: 0; transform: scale(0.8) translateY(6px); }
+  60% { transform: scale(1.05) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-number { animation: numberPop 0.5s ease-out both; }
+
+/* ── Hover Glow Button ── */
+.btn-glow {
+  position: relative;
+  overflow: hidden;
+}
+.btn-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.2), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.btn-glow:hover::after { opacity: 1; }
+
+/* ── Smooth Scrollbar for panels ── */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  overflow-y: auto;
+}
+.smooth-scroll::-webkit-scrollbar { width: 4px; }
+.smooth-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+/* ── Toast Slide-in ── */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
+}
+
+/* ── Collapse/Expand ── */
+@keyframes collapseDown {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 500px; opacity: 1; }
+}
+.animate-collapse {
+  animation: collapseDown 0.3s ease-out both;
+  overflow: hidden;
+}
+
+/* ── Ring Progress Utility ── */
+.progress-ring-bg { stroke: rgba(255, 255, 255, 0.05); }
+.progress-ring-fill {
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+  transform: rotate(-90deg);
+}
+
+/* ── Table Styles ── */
+.data-table { border-collapse: separate; border-spacing: 0; }
+.data-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+.data-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.data-table tr:hover td {
+  background: var(--glass-bg-hover);
+}
+

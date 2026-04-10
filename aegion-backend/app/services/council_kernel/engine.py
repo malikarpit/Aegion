@@ -495,8 +495,8 @@ class CouncilEngine:
             try:
                 from .constitution import get_constitution
                 constitution_preamble = get_constitution().build_system_prompt_preamble()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Constitution preamble skipped: {exc}")
 
         # ── 2. Evidence gathering (best-effort) ──
         evidence_prompt_block = ""
@@ -512,8 +512,8 @@ class CouncilEngine:
                 if evidence_prompt_block:
                     evidence_prompt_block = f"\n\nWORKSPACE CONTEXT:\n{evidence_prompt_block}"
                     evidence_used = True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Evidence gathering skipped: {exc}")
 
         # ── 3. Temporal memory recall (if enabled) ──
         temporal_block = ""
@@ -657,8 +657,8 @@ class CouncilEngine:
                                 variant_id="",  # Active variant
                                 rubric_score=rubric_overall,
                             )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(f"Prompt registry feedback loop failed (non-fatal): {exc}")
             except Exception as exc:
                 logger.warning(f"Rubric scoring failed (non-fatal): {exc}")
 
@@ -706,8 +706,8 @@ class CouncilEngine:
                         "[CONSTITUTIONAL REDACTION] Output contained governance violations: "
                         f"{'; '.join(violations)}\n\n{result.synthesis}"
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Parent constitutional response check skipped: {exc}")
 
         return result
 
@@ -745,8 +745,8 @@ class CouncilEngine:
                     try:
                         from .constitution import get_constitution
                         return get_constitution().build_system_prompt_preamble()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(f"DAG constitution preamble skipped: {exc}")
                 return ""
 
             async def gather_evidence():
@@ -756,8 +756,8 @@ class CouncilEngine:
                     evidence = await em.gather(workspace_id, query)
                     if evidence:
                         return "\n\n[EVIDENCE CONTEXT]\n" + evidence[:3000]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG evidence gathering skipped: {exc}")
                 return ""
 
             async def gather_temporal():
@@ -771,8 +771,8 @@ class CouncilEngine:
                         lines = [f"  - {d['summary']} (outcome: {d.get('outcome', 'pending')})"
                                  for d in recall.relevant_decisions[:3]]
                         return "\n\n[HISTORICAL CONTEXT]\n" + "\n".join(lines)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG temporal memory skipped: {exc}")
                 return ""
 
             preamble, evidence_block, temporal_block = await asyncio.gather(
@@ -797,8 +797,8 @@ class CouncilEngine:
                     if chain:
                         text = "\n→ ".join(s.get("thought", "")[:200] for s in chain)
                         return f"\n\nDEEP REASONING (MCTS):\n→ {text}"
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG MCTS reasoning skipped: {exc}")
                 return ""
 
             async def run_cross_council():
@@ -817,8 +817,8 @@ class CouncilEngine:
                     if result.sub_results:
                         lines = [f"  [{r.domain}]: {r.summary[:200]}" for r in result.sub_results[:3]]
                         return "\n\n[SUB-COUNCIL INSIGHTS]\n" + "\n".join(lines)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG cross-council skipped: {exc}")
                 return ""
 
             mcts_block, sub_council_block = await asyncio.gather(
@@ -847,8 +847,8 @@ class CouncilEngine:
                             model_slots, self.model_router,
                         )
                         persona_perspectives = result.get("persona_responses", [])
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(f"DAG persona debate skipped: {exc}")
 
             async def run_parallel_models():
                 nonlocal all_responses
@@ -891,8 +891,8 @@ class CouncilEngine:
                             f"{'; '.join(f.description for f in rt_report.critical_findings[:3])}\n\n"
                             f"---\n\n{result.synthesis}"
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG red team validation skipped: {exc}")
 
             if config.constitution_enforcement:
                 try:
@@ -903,8 +903,8 @@ class CouncilEngine:
                             "[CONSTITUTIONAL REDACTION] " + "; ".join(violations)
                             + "\n\n" + result.synthesis
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"DAG constitutional response check skipped: {exc}")
 
             return result
 
@@ -968,8 +968,8 @@ class CouncilEngine:
                     self.model_router,
                 )
                 persona_perspectives = persona_result.get("persona_responses", [])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Sentinel persona debate skipped: {exc}")
 
         # ── 3. Parallel model calls ──
         responses = await self._run_parallel(
@@ -984,8 +984,8 @@ class CouncilEngine:
             if responses:
                 best = max(responses, key=lambda r: r.confidence)
                 rubric_scores = await re_engine.score(best.response, rubric_name="code_review")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"Sentinel rubric scoring skipped: {exc}")
 
         result = self._synthesize(
             query, CouncilType.SENTINEL, profile, responses, start_ms,
@@ -1008,8 +1008,8 @@ class CouncilEngine:
                         f"{'; '.join(f.description for f in rt_report.critical_findings[:3])}\n\n"
                         f"---\n\n{result.synthesis}"
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Sentinel red team validation skipped: {exc}")
 
         # ── 6. Constitutional response check ──
         if config.constitution_enforcement:
@@ -1021,8 +1021,8 @@ class CouncilEngine:
                         "[CONSTITUTIONAL REDACTION] " + "; ".join(violations)
                         + "\n\n" + result.synthesis
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Sentinel constitutional check skipped: {exc}")
 
         return result
 
@@ -1275,8 +1275,8 @@ class CouncilEngine:
         try:
             from .cache import get_semantic_cache
             await get_semantic_cache().store(workspace_id, query, response, model)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"Semantic cache store failed (non-fatal): {exc}")
 
     # ──────────────────────────────────────────────
     # Cost tracking

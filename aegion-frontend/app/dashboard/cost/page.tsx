@@ -1,141 +1,282 @@
 "use client";
 
+import { useState } from "react";
 import {
-    AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    Tooltip, ResponsiveContainer, ReferenceLine,
-} from "recharts";
-import { DollarSign, TrendingUp, Zap, Database } from "lucide-react";
+    DollarSign, TrendingUp, TrendingDown, Cpu, Zap, Database,
+    BarChart3, Activity, Settings, Download, AlertTriangle, Check,
+} from "lucide-react";
+import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
+import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Badge } from "@/components/ui/Badge";
-import { MOCK_COST_OVER_TIME, MOCK_COST_MODELS, MOCK_STATS } from "@/lib/mock-data";
 
-function MetricCard({ title, value, icon, subtitle, className = "" }: {
-    title: string; value: string; icon: React.ReactNode; subtitle: string; className?: string;
-}) {
+// ──────────────────────────────────────────────────────────────────────────────
+// Mock data
+// ──────────────────────────────────────────────────────────────────────────────
+
+const BUDGET = { monthly: 100, spent: 47.30, daily: 10, spentToday: 2.47, autoPause: true };
+
+const PROVIDERS = [
+    { name: "OpenAI", models: ["gpt-4o", "gpt-4o-mini"], cost: 28.40, calls: 340, avgLatency: 820, status: "healthy" },
+    { name: "Anthropic", models: ["claude-sonnet-4", "claude-haiku"], cost: 12.50, calls: 180, avgLatency: 650, status: "healthy" },
+    { name: "Google", models: ["gemini-2.0-flash", "gemini-2.5-pro"], cost: 6.40, calls: 520, avgLatency: 340, status: "healthy" },
+];
+
+const MODEL_LEADERBOARD = [
+    { model: "gemini-2.0-flash", provider: "Google", calls: 420, totalCost: 4.20, avgCost: 0.01, avgLatency: 280 },
+    { model: "gpt-4o-mini", provider: "OpenAI", calls: 220, totalCost: 8.80, avgCost: 0.04, avgLatency: 520 },
+    { model: "claude-haiku", provider: "Anthropic", calls: 140, totalCost: 4.20, avgCost: 0.03, avgLatency: 380 },
+    { model: "gpt-4o", provider: "OpenAI", calls: 120, totalCost: 19.60, avgCost: 0.16, avgLatency: 1200 },
+    { model: "claude-sonnet-4", provider: "Anthropic", calls: 40, totalCost: 8.30, avgCost: 0.21, avgLatency: 900 },
+    { model: "gemini-2.5-pro", provider: "Google", calls: 20, totalCost: 2.20, avgCost: 0.11, avgLatency: 680 },
+];
+
+const DAILY_COSTS = [
+    { day: "Apr 4", cost: 1.2 }, { day: "Apr 5", cost: 3.1 }, { day: "Apr 6", cost: 2.4 },
+    { day: "Apr 7", cost: 1.8 }, { day: "Apr 8", cost: 4.2 }, { day: "Apr 9", cost: 0.9 },
+    { day: "Apr 10", cost: 2.5 },
+];
+
+const CACHE_STATS = { hits: 640, misses: 360, savings: 12.80 };
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Mini chart component
+// ──────────────────────────────────────────────────────────────────────────────
+
+function BarMiniChart({ data, color = "#3b82f6" }: { data: { day: string; cost: number }[]; color?: string }) {
+    const max = Math.max(...data.map(d => d.cost));
     return (
-        <div className={`glass-card p-5 ${className}`}>
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-slate-500 uppercase tracking-wider">{title}</span>
-                <div className="text-slate-400">{icon}</div>
-            </div>
-            <p className="text-2xl font-bold text-white">{value}</p>
-            <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+        <div className="flex items-end gap-1.5 h-24">
+            {data.map((d, i) => (
+                <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
+                    <div
+                        className="w-full rounded-t-md transition-all duration-500"
+                        style={{
+                            height: `${(d.cost / max) * 100}%`,
+                            background: `linear-gradient(to top, ${color}40, ${color})`,
+                            animationDelay: `${i * 80}ms`,
+                        }}
+                    />
+                    <span className="text-[9px] text-slate-600">{d.day.split(" ")[1]}</span>
+                </div>
+            ))}
         </div>
     );
 }
 
-export default function CostPage() {
-    const totalSpend = MOCK_COST_MODELS.reduce((s, m) => s + m.totalSpend, 0);
-    const budget = 50;
+function ProviderCard({ provider }: { provider: typeof PROVIDERS[0] }) {
+    const statusColor = provider.status === "healthy" ? "green" : "red";
+    return (
+        <div className="glass-card card-lift p-5">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <div className={`status-dot ${statusColor}`} />
+                    <span className="text-sm font-semibold text-white">{provider.name}</span>
+                </div>
+                <Badge variant={provider.status === "healthy" ? "success" : "danger"}>
+                    {provider.status}
+                </Badge>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                    <div className="text-lg font-bold text-white">${provider.cost.toFixed(2)}</div>
+                    <div className="text-[10px] text-slate-500">Total Cost</div>
+                </div>
+                <div>
+                    <div className="text-lg font-bold text-white">{provider.calls}</div>
+                    <div className="text-[10px] text-slate-500">API Calls</div>
+                </div>
+                <div>
+                    <div className="text-lg font-bold text-white">{provider.avgLatency}ms</div>
+                    <div className="text-[10px] text-slate-500">Avg Latency</div>
+                </div>
+            </div>
+            <div className="mt-3 flex gap-1">
+                {provider.models.map(m => (
+                    <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] text-slate-400">
+                        {m}
+                    </span>
+                ))}
+            </div>
+        </div>
+    );
+}
 
-    const barData = MOCK_COST_OVER_TIME.slice(-14).map((d) => ({
-        date: d.date,
-        total: +(d.openai + d.anthropic + d.google + d.deepseek).toFixed(2),
-    }));
+// ──────────────────────────────────────────────────────────────────────────────
+// Main Page
+// ──────────────────────────────────────────────────────────────────────────────
+
+export default function CostDashboardPage() {
+    const [period, setPeriod] = useState<"7d" | "30d" | "90d">("7d");
+    const budgetPercent = (BUDGET.spent / BUDGET.monthly) * 100;
 
     return (
         <div className="p-6 lg:p-8 space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                        <DollarSign className="w-6 h-6 text-emerald-400" />
+                        Cost Analytics
+                    </h1>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Token spend, budget tracking, and provider performance
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    {(["7d", "30d", "90d"] as const).map(p => (
+                        <button
+                            key={p}
+                            onClick={() => setPeriod(p)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                period === p
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08]"
+                            }`}
+                        >
+                            {p}
+                        </button>
+                    ))}
+                    <button className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] transition-all flex items-center gap-1">
+                        <Download className="w-3 h-3" />
+                        Export
+                    </button>
+                </div>
+            </div>
+
+            {/* Top Row: Budget Ring + Daily Chart + Cache */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Budget Ring */}
+                <div className="glass-card p-6 flex flex-col items-center stagger-1">
+                    <h3 className="text-sm font-semibold text-white mb-4">Monthly Budget</h3>
+                    <ProgressRing
+                        value={100 - budgetPercent}
+                        size={140}
+                        strokeWidth={10}
+                        color="auto"
+                        label="Remaining"
+                    />
+                    <div className="mt-4 text-center space-y-1">
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="text-sm text-slate-400">Spent:</span>
+                            <span className="text-sm font-bold text-white">
+                                $<AnimatedCounter value={BUDGET.spent} decimals={2} />
+                            </span>
+                            <span className="text-sm text-slate-500">/ ${BUDGET.monthly}</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="text-sm text-slate-400">Today:</span>
+                            <span className="text-sm font-medium text-white">${BUDGET.spentToday}</span>
+                            <span className="text-sm text-slate-500">/ ${BUDGET.daily}</span>
+                        </div>
+                        {BUDGET.autoPause && (
+                            <div className="flex items-center justify-center gap-1 text-xs text-emerald-400">
+                                <Check className="w-3 h-3" />
+                                Auto-pause on budget exceeded
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Daily Spend Bar Chart */}
+                <div className="glass-card p-6 stagger-2">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-white">Daily Spend</h3>
+                        <span className="text-xs text-slate-500">Last 7 days</span>
+                    </div>
+                    <BarMiniChart data={DAILY_COSTS} />
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                        <span>Avg: $2.30/day</span>
+                        <span className="text-emerald-400 flex items-center gap-1">
+                            <TrendingDown className="w-3 h-3" /> -12% vs last week
+                        </span>
+                    </div>
+                </div>
+
+                {/* Cache Performance */}
+                <div className="glass-card p-6 stagger-3">
+                    <h3 className="text-sm font-semibold text-white mb-4">Cache Performance</h3>
+                    <ProgressRing
+                        value={(CACHE_STATS.hits / (CACHE_STATS.hits + CACHE_STATS.misses)) * 100}
+                        size={100}
+                        color="stroke-cyan-400"
+                        label="Hit Rate"
+                        className="mx-auto"
+                    />
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                            <div className="text-sm font-bold text-emerald-400">{CACHE_STATS.hits}</div>
+                            <div className="text-[10px] text-slate-500">Hits</div>
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-slate-400">{CACHE_STATS.misses}</div>
+                            <div className="text-[10px] text-slate-500">Misses</div>
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-cyan-400">${CACHE_STATS.savings}</div>
+                            <div className="text-[10px] text-slate-500">Saved</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Provider Cards */}
             <div>
-                <h1 className="text-2xl font-bold text-white">Cost Dashboard</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                    Track spending, budget utilization, and model efficiency
-                </p>
-            </div>
-
-            {/* KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard
-                    title="Total Spend (30d)"
-                    value={`$${totalSpend.toFixed(2)}`}
-                    icon={<DollarSign size={18} />}
-                    subtitle={`${((totalSpend / budget) * 100).toFixed(0)}% of $${budget} budget`}
-                />
-                <MetricCard
-                    title="Avg Daily"
-                    value={`$${(totalSpend / 30).toFixed(2)}`}
-                    icon={<TrendingUp size={18} />}
-                    subtitle="Per day average"
-                />
-                <MetricCard
-                    title="Cache Hit Rate"
-                    value={`${MOCK_STATS.cacheHitRate}%`}
-                    icon={<Zap size={18} />}
-                    subtitle="Saving ~$12.40 / month"
-                />
-                <MetricCard
-                    title="Cheapest Model"
-                    value="DeepSeek"
-                    icon={<Database size={18} />}
-                    subtitle="$0.0008 / query avg"
-                />
-            </div>
-
-            {/* Budget Burn Chart */}
-            <div className="glass-card-static p-6">
-                <h3 className="text-lg font-semibold text-white mb-1">Budget Burn</h3>
-                <p className="text-xs text-slate-500 mb-6">Daily spend vs budget limit (last 14 days)</p>
-                <div className="h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={barData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                            <Tooltip
-                                content={({ active, payload, label }) => {
-                                    if (!active || !payload?.length) return null;
-                                    return (
-                                        <div className="bg-[#111118] border border-white/10 rounded-lg px-3 py-2 text-xs shadow-xl">
-                                            <p className="text-slate-400 mb-1">{label}</p>
-                                            <p className="text-white font-bold">${payload[0].value}</p>
-                                        </div>
-                                    );
-                                }}
-                            />
-                            <ReferenceLine y={budget / 30} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "Daily Budget", fill: "#ef4444", fontSize: 10 }} />
-                            <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="url(#barGradient)" />
-                            <defs>
-                                <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.2} />
-                                </linearGradient>
-                            </defs>
-                        </BarChart>
-                    </ResponsiveContainer>
+                <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-purple-400" />
+                    Provider Performance
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {PROVIDERS.map((p, i) => (
+                        <ProviderCard key={p.name} provider={p} />
+                    ))}
                 </div>
             </div>
 
             {/* Model Leaderboard */}
-            <div className="glass-card-static p-6">
-                <h3 className="text-lg font-semibold text-white mb-1">Model Leaderboard</h3>
-                <p className="text-xs text-slate-500 mb-4">Accuracy vs cost comparison</p>
-
+            <div className="glass-card-static overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-blue-400" />
+                        Model Leaderboard
+                    </h3>
+                    <span className="text-xs text-slate-500">Sorted by total cost</span>
+                </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="data-table w-full">
                         <thead>
-                            <tr className="border-b border-white/5">
-                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Model</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Provider</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Accuracy</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Avg Cost</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Cache Rate</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Total Spend</th>
+                            <tr>
+                                <th className="text-left">Model</th>
+                                <th className="text-left">Provider</th>
+                                <th className="text-right">Calls</th>
+                                <th className="text-right">Total Cost</th>
+                                <th className="text-right">Avg Cost/Call</th>
+                                <th className="text-right">Avg Latency</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {MOCK_COST_MODELS.sort((a, b) => b.accuracy - a.accuracy).map((m) => (
-                                <tr key={m.model} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
-                                    <td className="px-4 py-3 font-medium text-white font-mono text-xs">{m.model}</td>
-                                    <td className="px-4 py-3 text-slate-400">{m.provider}</td>
-                                    <td className="px-4 py-3 text-right">
-                                        <Badge variant={m.accuracy >= 90 ? "success" : m.accuracy >= 80 ? "info" : "warning"} size="sm">
-                                            {m.accuracy}%
-                                        </Badge>
+                            {MODEL_LEADERBOARD.map((m, i) => (
+                                <tr key={m.model}>
+                                    <td className="text-left">
+                                        <span className="text-sm font-medium text-white">{m.model}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-right text-slate-300 font-mono">
-                                        ${m.avgCost.toFixed(4)}
+                                    <td className="text-left">
+                                        <span className="text-sm text-slate-400">{m.provider}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-right text-slate-400">{m.cacheRate}%</td>
-                                    <td className="px-4 py-3 text-right text-white font-medium">
-                                        ${m.totalSpend.toFixed(2)}
+                                    <td className="text-right">
+                                        <span className="text-sm tabular-nums text-slate-300">{m.calls}</span>
+                                    </td>
+                                    <td className="text-right">
+                                        <span className="text-sm tabular-nums font-medium text-white">${m.totalCost.toFixed(2)}</span>
+                                    </td>
+                                    <td className="text-right">
+                                        <span className={`text-sm tabular-nums ${m.avgCost > 0.10 ? "text-yellow-400" : "text-emerald-400"}`}>
+                                            ${m.avgCost.toFixed(3)}
+                                        </span>
+                                    </td>
+                                    <td className="text-right">
+                                        <span className={`text-sm tabular-nums ${m.avgLatency > 1000 ? "text-yellow-400" : "text-slate-300"}`}>
+                                            {m.avgLatency}ms
+                                        </span>
                                     </td>
                                 </tr>
                             ))}

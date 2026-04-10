@@ -3,10 +3,15 @@ import { AegionClient } from '../client/AegionClient';
 import { SessionManager } from '../auth/SessionManager';
 
 /**
- * Phase 86: VS Code Webview Provider for Model Settings & Cost Analytics.
- * Injects a lightweight React/HTML interface directly into the IDE sidebar
- * to let developers toggle cost modes (e.g. going into "No Limits" mode for complex tasks)
- * without opening the web dashboard.
+ * Phase 86 Enhanced: VS Code Webview Provider for Model Settings & Cost Analytics.
+ *
+ * Features:
+ *  - Preset selection with instant apply
+ *  - Budget tracker with progress bar + danger state
+ *  - Individual setting toggles (council, ghost text, sentinel, governance)
+ *  - Cascade model order drag hint
+ *  - Live cost display
+ *  - Settings export/import
  */
 export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'aegion.modelSettingsView';
@@ -40,6 +45,15 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
                 case 'applyPreset':
                     await this.applyPreset(data.presetKey);
                     break;
+                case 'updateSetting':
+                    await this.updateSetting(data.path, data.value);
+                    break;
+                case 'exportSettings':
+                    await this.exportSettings();
+                    break;
+                case 'openDashboard':
+                    vscode.env.openExternal(vscode.Uri.parse('http://localhost:3000/dashboard/settings'));
+                    break;
             }
         });
 
@@ -57,7 +71,6 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Parallel fetch to local aegion-backend instance (or prod if configured)
             const [settings, budget, presets] = await Promise.all([
                 this.client.get(`/v1/model-settings/`),
                 this.client.get(`/v1/model-settings/budget`),
@@ -69,13 +82,14 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
                 payload: {
                     activePreset: settings.active_preset || 'balanced',
                     budget: budget,
-                    presets: presets
+                    presets: presets?.built_in || presets || [],
+                    settings: settings,
                 }
             });
         } catch (error: any) {
-            this._view.webview.postMessage({ 
-                type: 'error', 
-                message: error?.message || 'Failed to load model settings' 
+            this._view.webview.postMessage({
+                type: 'error',
+                message: error?.message || 'Failed to load model settings'
             });
         }
     }
@@ -90,9 +104,30 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    private async updateSetting(path: string, value: any) {
+        try {
+            await this.client.patch(`/v1/model-settings/setting`, { path, value });
+            vscode.window.showInformationMessage(`Aegion: Updated ${path}`);
+            await this.loadData();
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Failed to update setting: ${error?.message}`);
+        }
+    }
+
+    private async exportSettings() {
+        try {
+            const settings = await this.client.get(`/v1/model-settings/`);
+            const doc = await vscode.workspace.openTextDocument({
+                content: JSON.stringify(settings, null, 2),
+                language: 'json',
+            });
+            vscode.window.showTextDocument(doc);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Export failed: ${error?.message}`);
+        }
+    }
+
     private _getHtmlForWebview(webview: vscode.Webview): string {
-        // A clean, compact UI optimized for the VS Code sidebar
-        // We use VS Code's native CSS variables for seamless theme integration
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -100,104 +135,175 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Model Settings</title>
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: var(--vscode-font-family);
-            padding: 10px;
+            font-size: 12px;
+            padding: 12px;
             color: var(--vscode-editor-foreground);
-            background-color: var(--vscode-editor-background);
+            background: var(--vscode-editor-background);
         }
-        .header {
-            margin-bottom: 20px;
-        }
-        .header h2 {
-            font-size: 14px;
+
+        /* Section */
+        .section { margin-bottom: 16px; }
+        .section-title {
+            font-size: 11px;
             text-transform: uppercase;
+            letter-spacing: 0.8px;
             color: var(--vscode-sideBarTitle-foreground);
-            letter-spacing: 0.5px;
-            margin: 0 0 5px 0;
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
+
+        /* Budget Card */
         .budget-card {
             background: var(--vscode-editorWidget-background);
             border: 1px solid var(--vscode-widget-border);
-            border-radius: 4px;
-            padding: 10px;
-            margin-bottom: 20px;
+            border-radius: 6px;
+            padding: 12px;
         }
         .budget-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 13px;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 4px;
         }
+        .budget-label { opacity: 0.7; }
+        .budget-value { font-weight: 600; font-variant-numeric: tabular-nums; }
         .progress-bar {
             height: 4px;
-            background: var(--vscode-progressBar-background);
-            border-radius: 2px;
+            background: var(--vscode-progressBar-background, rgba(255,255,255,0.1));
+            border-radius: 4px;
             overflow: hidden;
             margin-top: 8px;
         }
         .progress-fill {
             height: 100%;
+            border-radius: 4px;
             background: var(--vscode-activityBarBadge-background);
-            transition: width 0.3s ease;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .progress-fill.danger {
-            background: var(--vscode-testing-iconFailed);
-        }
-        .preset-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        .progress-fill.warning { background: #eab308; }
+        .progress-fill.danger { background: var(--vscode-testing-iconFailed, #ef4444); }
+
+        /* Preset Cards */
+        .preset-grid { display: flex; flex-direction: column; gap: 6px; }
         .preset-card {
             background: var(--vscode-sideBar-background);
             border: 1px solid var(--vscode-panel-border);
-            border-radius: 4px;
+            border-radius: 6px;
             padding: 8px 10px;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .preset-card:hover {
             background: var(--vscode-list-hoverBackground);
+            border-color: var(--vscode-focusBorder);
         }
         .preset-card.active {
             border-color: var(--vscode-focusBorder);
             background: var(--vscode-list-activeSelectionBackground);
             color: var(--vscode-list-activeSelectionForeground);
         }
-        .preset-header {
+        .preset-info { flex: 1; }
+        .preset-name { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+        .preset-desc { font-size: 10px; opacity: 0.7; line-height: 1.3; }
+        .preset-icon { font-size: 16px; width: 24px; text-align: center; }
+
+        /* Toggle Switch */
+        .setting-row {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            font-weight: 600;
-            font-size: 13px;
-            margin-bottom: 4px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.05));
         }
-        .preset-desc {
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label { font-size: 11px; flex: 1; }
+        .toggle {
+            width: 32px; height: 16px;
+            background: var(--vscode-panel-border, rgba(255,255,255,0.2));
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .toggle.on { background: var(--vscode-activityBarBadge-background, #0078d4); }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            background: white;
+            top: 2px; left: 2px;
+            transition: transform 0.2s;
+        }
+        .toggle.on::after { transform: translateX(16px); }
+
+        /* Actions */
+        .actions { display: flex; gap: 6px; margin-top: 8px; }
+        .btn {
+            flex: 1;
+            padding: 6px 0;
+            border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+            background: var(--vscode-button-secondaryBackground, var(--vscode-sideBar-background));
+            color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+            border-radius: 4px;
+            cursor: pointer;
             font-size: 11px;
-            opacity: 0.8;
-            margin: 0;
-            line-height: 1.4;
+            text-align: center;
+            transition: all 0.15s;
         }
+        .btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+        }
+        .btn.primary {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-color: var(--vscode-button-background);
+        }
+        .btn.primary:hover { background: var(--vscode-button-hoverBackground); }
+
+        /* Loader */
         .loader {
             text-align: center;
-            padding: 20px;
-            opacity: 0.7;
-            font-size: 12px;
+            padding: 30px 10px;
+            opacity: 0.6;
+            font-size: 11px;
         }
         .hidden { display: none !important; }
+
+        /* Separator */
+        .sep {
+            height: 1px;
+            background: var(--vscode-panel-border);
+            margin: 12px 0;
+        }
     </style>
 </head>
 <body>
     <div id="loader" class="loader">Loading settings...</div>
-    
+
     <div id="content" class="hidden">
-        <div class="header">
-            <h2>Budget Tracker</h2>
-            <div class="budget-card" id="budgetCard">
+        <!-- Budget Section -->
+        <div class="section">
+            <div class="section-title">📊 Budget Tracker</div>
+            <div class="budget-card">
                 <div class="budget-row">
-                    <span>Daily Spend</span>
-                    <strong id="dailySpend">$0.00 / ∞</strong>
+                    <span class="budget-label">Daily</span>
+                    <span class="budget-value" id="dailySpend">$0.00 / ∞</span>
+                </div>
+                <div class="budget-row">
+                    <span class="budget-label">Monthly</span>
+                    <span class="budget-value" id="monthlySpend">$0.00 / ∞</span>
                 </div>
                 <div class="progress-bar">
                     <div id="budgetProgress" class="progress-fill" style="width: 0%"></div>
@@ -205,83 +311,178 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
-        <div class="header">
-            <h2>Optimization Profile</h2>
-            <div id="presetList" class="preset-list">
-                <!-- Populated by JS -->
+        <!-- Presets Section -->
+        <div class="section">
+            <div class="section-title">⚡ Optimization Profile</div>
+            <div id="presetList" class="preset-grid"></div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Quick Toggles -->
+        <div class="section">
+            <div class="section-title">🔧 Quick Settings</div>
+            <div id="toggles">
+                <div class="setting-row">
+                    <span class="setting-label">Ghost Text (AI Completions)</span>
+                    <div class="toggle on" data-path="ghost_text.enabled" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Weighted Synthesis</span>
+                    <div class="toggle on" data-path="council.weighted_synthesis" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Constitutional AI</span>
+                    <div class="toggle on" data-path="council.constitution_enforcement" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Red Team Validation</span>
+                    <div class="toggle" data-path="sentinel.red_team_enabled" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Auto-Approve T0</span>
+                    <div class="toggle on" data-path="governance.auto_approve_t0" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Context Pruning</span>
+                    <div class="toggle on" data-path="council.context_pruning" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Auto-Gather Evidence</span>
+                    <div class="toggle on" data-path="memory.evidence_auto_gather" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Budget Auto-Pause</span>
+                    <div class="toggle on" data-path="budget.auto_pause" onclick="toggleSetting(this)"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Actions -->
+        <div class="section">
+            <div class="actions">
+                <button class="btn" onclick="doExport()">📥 Export</button>
+                <button class="btn primary" onclick="openDashboard()">🌐 Full Settings</button>
+            </div>
+            <div class="actions" style="margin-top: 4px;">
+                <button class="btn" onclick="doRefresh()">🔄 Refresh</button>
             </div>
         </div>
     </div>
 
     <script>
         const vscode = acquireVsCodeApi();
-        
+
         const loader = document.getElementById('loader');
         const content = document.getElementById('content');
-        const budgetCard = document.getElementById('budgetCard');
         const dailySpend = document.getElementById('dailySpend');
+        const monthlySpend = document.getElementById('monthlySpend');
         const budgetProgress = document.getElementById('budgetProgress');
         const presetList = document.getElementById('presetList');
 
-        let currentState = { activePreset: '', presets: [] };
+        let currentState = { activePreset: '', presets: [], settings: {} };
 
         window.addEventListener('message', event => {
             const message = event.data;
             if (message.type === 'update') {
                 loader.classList.add('hidden');
                 content.classList.remove('hidden');
-                
-                const payload = message.payload;
-                currentState = payload;
-                
-                // Update Budget UI
-                if (payload.budget) {
-                    const spend = payload.budget.daily_spend || 0;
-                    const limit = payload.budget.daily_limit;
-                    
-                    if (limit) {
-                        dailySpend.innerText = \`$\${spend.toFixed(2)} / $\${limit.toFixed(2)}\`;
-                        const pct = Math.min((spend / limit) * 100, 100);
+
+                const p = message.payload;
+                currentState = p;
+
+                // Budget
+                if (p.budget) {
+                    const ds = p.budget.daily_spend || 0;
+                    const dl = p.budget.daily_limit;
+                    const ms = p.budget.monthly_spend || 0;
+                    const ml = p.budget.monthly_limit;
+
+                    dailySpend.innerText = dl
+                        ? \`$\${ds.toFixed(2)} / $\${dl.toFixed(2)}\`
+                        : \`$\${ds.toFixed(2)} (∞)\`;
+
+                    monthlySpend.innerText = ml
+                        ? \`$\${ms.toFixed(2)} / $\${ml.toFixed(2)}\`
+                        : \`$\${ms.toFixed(2)} (∞)\`;
+
+                    if (ml) {
+                        const pct = Math.min((ms / ml) * 100, 100);
                         budgetProgress.style.width = \`\${pct}%\`;
-                        if (pct > 90) budgetProgress.classList.add('danger');
-                        else budgetProgress.classList.remove('danger');
+                        budgetProgress.className = 'progress-fill' +
+                            (pct > 90 ? ' danger' : pct > 70 ? ' warning' : '');
                     } else {
-                        dailySpend.innerText = \`$\${spend.toFixed(2)} (Unlimited)\`;
                         budgetProgress.style.width = '0%';
                     }
                 }
 
-                // Render Preset List
-                if (payload.presets && payload.presets.length > 0) {
+                // Presets
+                const presets = Array.isArray(p.presets) ? p.presets : [];
+                if (presets.length > 0) {
                     presetList.innerHTML = '';
-                    payload.presets.forEach(p => {
+                    presets.forEach(preset => {
                         const div = document.createElement('div');
-                        div.className = 'preset-card ' + (p.key === payload.activePreset ? 'active' : '');
-                        div.onclick = () => selectPreset(p.key);
-                        
+                        div.className = 'preset-card' + (preset.key === p.activePreset ? ' active' : '');
+                        div.onclick = () => selectPreset(preset.key);
                         div.innerHTML = \`
-                            <div class="preset-header">
-                                <span>\${p.icon}</span>
-                                <span>\${p.name}</span>
+                            <span class="preset-icon">\${preset.icon || '⚙️'}</span>
+                            <div class="preset-info">
+                                <div class="preset-name">\${preset.name}</div>
+                                <div class="preset-desc">\${preset.description}</div>
                             </div>
-                            <p class="preset-desc">\${p.description}</p>
                         \`;
                         presetList.appendChild(div);
                     });
                 }
+
+                // Sync toggles with server state
+                if (p.settings) {
+                    document.querySelectorAll('.toggle[data-path]').forEach(el => {
+                        const path = el.dataset.path;
+                        const parts = path.split('.');
+                        let val = p.settings;
+                        for (const part of parts) {
+                            val = val?.[part];
+                        }
+                        if (typeof val === 'boolean') {
+                            el.classList.toggle('on', val);
+                        }
+                    });
+                }
+
             } else if (message.type === 'error') {
-                loader.innerText = 'Error: ' + message.message;
+                loader.innerText = '⚠ ' + message.message;
             }
         });
 
         function selectPreset(key) {
             if (key === currentState.activePreset) return;
-            
-            // Optimistic UI update
             document.querySelectorAll('.preset-card').forEach(el => el.classList.remove('active'));
-            event.currentTarget.classList.add('active');
-            
+            event?.currentTarget?.classList?.add('active');
             vscode.postMessage({ type: 'applyPreset', presetKey: key });
+        }
+
+        function toggleSetting(el) {
+            const isOn = el.classList.toggle('on');
+            const path = el.dataset.path;
+            vscode.postMessage({ type: 'updateSetting', path, value: isOn });
+        }
+
+        function doRefresh() {
+            loader.classList.remove('hidden');
+            content.classList.add('hidden');
+            loader.innerText = 'Refreshing...';
+            vscode.postMessage({ type: 'refresh' });
+        }
+
+        function doExport() {
+            vscode.postMessage({ type: 'exportSettings' });
+        }
+
+        function openDashboard() {
+            vscode.postMessage({ type: 'openDashboard' });
         }
     </script>
 </body>

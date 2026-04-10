@@ -311,6 +311,12 @@ export interface GhostTextSuggestion {
     confidence: number;
     reasoning?: string;
     is_governance_compliant?: boolean;
+    model?: string;
+    provider?: string;
+    cost_usd?: number;
+    latency_ms?: number;
+    tokens_used?: number;
+    mode?: string;
 }
 
 // Memory Search Result
