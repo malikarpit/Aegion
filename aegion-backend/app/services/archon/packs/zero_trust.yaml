@@ -1,0 +1,20 @@
+name: "Zero Trust Security Pack"
+description: "Enforces strict identity and access protocols."
+invariants:
+  - name: "No Hardcoded Secrets"
+    severity: "critical"
+    pattern: "(?i)(password|secret|api_key|token)\\s*=\\s*['\"][a-zA-Z0-9]{8,}['\"]"
+    message: "Hardcoded secret detected. Use environment variables or Secrets Manager."
+    
+  - name: "Mandatory Auth Middleware"
+    severity: "high"
+    pattern: "@router\\.(get|post|put|delete|patch)"
+    negative_constraint: "Depends\\(get_current_user\\)"
+    message: "Public endpoint detected. All endpoints must be authenticated or explicitly exempted."
+    
+  - name: "Explicit RBAC"
+    severity: "medium"
+    pattern: "def "
+    negative_constraint: "AuthorityContext"
+    paths: ["app/api/v1/*"]
+    message: "Handler missing AuthorityContext. RBAC checks may be bypassed."

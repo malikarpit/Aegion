@@ -1,0 +1,19 @@
+name: "HIPAA Compliance Pack"
+description: "Enforces audit trails and PII protection."
+invariants:
+  - name: "Audit Log Integrity"
+    severity: "critical"
+    pattern: "logger\\.(info|warning|error)"
+    paths: ["app/api/v1/*"]
+    negative_constraint: "user_id"
+    message: "Log entry must include user_id context for auditability."
+    
+  - name: "PII Masking"
+    severity: "high"
+    pattern: "(email|ssn|phone|credit_card)"
+    message: "Potential PII variable detected. Ensure masking before logging or storage."
+    
+  - name: "Encryption at Rest"
+    severity: "critical"
+    pattern: "open\\(.*['\"]w['\"]"
+    message: "Direct file write detected. Ensure content is encrypted via CryptoService."

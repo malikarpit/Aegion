@@ -1,0 +1,173 @@
+# Aegion Invariant Specifications
+#
+# Each invariant is evaluated at runtime on governance write operations.
+# Violations can either BLOCK the write or ALERT without blocking.
+#
+# Fields:
+#   id:           Unique identifier (INV-NNN)
+#   name:         Human-readable name
+#   description:  What this invariant enforces
+#   category:     structural | temporal | authority | evidence | freeze
+#   severity:     blocking | alerting
+#   condition:    When this invariant applies (Python expression context)
+#   must_satisfy: The assertion that must hold (Python expression context)
+#   error_msg:    Human-readable violation message
+#   enabled:      true/false toggle
+
+invariants:
+
+  # ────────────────────────────────────────────────
+  # Authority & Governance
+  # ────────────────────────────────────────────────
+
+  - id: INV-001
+    name: freeze_blocks_all_mutations
+    description: "No governance mutation is allowed when system is in freeze mode."
+    category: freeze
+    severity: blocking
+    condition: "freeze_active == True"
+    must_satisfy: "mutation_requested == False"
+    error_msg: "System is in freeze mode — all mutations are blocked."
+    enabled: true
+
+  - id: INV-002
+    name: sod_enforced_t1_plus
+    description: "For T1+ decisions, the proposer cannot be the approver."
+    category: authority
+    severity: blocking
+    condition: "tier in ('T1', 'T2', 'T3')"
+    must_satisfy: "proposer_id != approver_id"
+    error_msg: "Separation of Duties violation — proposer cannot approve their own proposal at tier {tier}."
+    enabled: true
+
+  - id: INV-003
+    name: ai_cannot_approve_t3
+    description: "AI agents can never approve T3 (irreversible, org-wide) decisions."
+    category: authority
+    severity: blocking
+    condition: "tier == 'T3'"
+    must_satisfy: "approver_type != 'ai'"
+    error_msg: "AI agents cannot approve T3 decisions — human approval required."
+    enabled: true
+
+  - id: INV-004
+    name: tier_monotonic_escalation
+    description: "A decision's tier cannot be downgraded after classification."
+    category: authority
+    severity: blocking
+    condition: "reclassification == True"
+    must_satisfy: "new_tier_ordinal >= original_tier_ordinal"
+    error_msg: "Tier can only escalate, not de-escalate (from {original_tier} to {new_tier})."
+    enabled: true
+
+  # ────────────────────────────────────────────────
+  # Evidence Rules
+  # ────────────────────────────────────────────────
+
+  - id: INV-005
+    name: t2_requires_two_evidence
+    description: "Tier 2+ decisions require at least 2 evidence nodes."
+    category: evidence
+    severity: blocking
+    condition: "tier in ('T2', 'T3')"
+    must_satisfy: "evidence_count >= 2"
+    error_msg: "Tier {tier} requires at least 2 evidence items, got {evidence_count}."
+    enabled: true
+
+  - id: INV-006
+    name: stale_evidence_rejected
+    description: "Stale evidence is never accepted for approval."
+    category: evidence
+    severity: blocking
+    condition: "True"
+    must_satisfy: "stale_evidence_count == 0"
+    error_msg: "{stale_evidence_count} stale evidence item(s) cannot support approval."
+    enabled: true
+
+  - id: INV-007
+    name: evidence_diversity_required
+    description: "T2+ evidence must include at least 2 distinct source types."
+    category: evidence
+    severity: blocking
+    condition: "tier in ('T2', 'T3')"
+    must_satisfy: "distinct_evidence_types >= 2"
+    error_msg: "Evidence diversity required — need ≥2 source types, got {distinct_evidence_types}."
+    enabled: true
+
+  - id: INV-008
+    name: evidence_newer_than_proposal
+    description: "Evidence must be created after the proposal it supports."
+    category: temporal
+    severity: blocking
+    condition: "True"
+    must_satisfy: "all_evidence_after_proposal == True"
+    error_msg: "Evidence must be newer than its proposal. Pre-dated evidence detected."
+    enabled: true
+
+  # ────────────────────────────────────────────────
+  # Structural Integrity
+  # ────────────────────────────────────────────────
+
+  - id: INV-009
+    name: decision_immutable
+    description: "Decision nodes cannot be modified after creation."
+    category: structural
+    severity: blocking
+    condition: "node_type == 'decision'"
+    must_satisfy: "is_create_operation == True"
+    error_msg: "Decision nodes are immutable — modification not permitted."
+    enabled: true
+
+  - id: INV-010
+    name: evidence_immutable
+    description: "Evidence nodes cannot be modified after submission."
+    category: structural
+    severity: blocking
+    condition: "node_type == 'evidence'"
+    must_satisfy: "is_create_operation == True"
+    error_msg: "Evidence nodes are immutable — modification not permitted."
+    enabled: true
+
+  - id: INV-011
+    name: no_orphan_decisions
+    description: "Every decision must be linked to at least one proposal."
+    category: structural
+    severity: alerting
+    condition: "node_type == 'decision'"
+    must_satisfy: "has_proposal_link == True"
+    error_msg: "Decision {node_id} has no proposal linkage — orphan detected."
+    enabled: true
+
+  - id: INV-012
+    name: workspace_boundary_enforced
+    description: "Cross-workspace references are forbidden."
+    category: structural
+    severity: blocking
+    condition: "True"
+    must_satisfy: "cross_workspace_reference == False"
+    error_msg: "Cross-workspace reference detected — workspace isolation violated."
+    enabled: true
+
+  # ────────────────────────────────────────────────
+  # Temporal Rules
+  # ────────────────────────────────────────────────
+
+  - id: INV-013
+    name: no_future_timestamps
+    description: "Node created_at timestamps cannot be in the future."
+    category: temporal
+    severity: alerting
+    condition: "True"
+    must_satisfy: "created_at_is_past == True"
+    error_msg: "Node {node_id} has a future timestamp — possible clock skew."
+    enabled: true
+
+  - id: INV-014
+    name: one_decision_per_proposal
+    description: "Each proposal can produce at most one approval decision."
+    category: structural
+    severity: blocking
+    condition: "operation == 'approve'"
+    must_satisfy: "existing_decisions_for_proposal == 0"
+    error_msg: "Proposal {proposal_id} already has a decision — duplicate approval attempt."
+    enabled: true

@@ -1,0 +1,183 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_backend:
+        description: 'Deploy backend to Cloud Run'
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: 'Deploy frontend to Firebase Hosting'
+        type: boolean
+        default: true
+
+# Prevent concurrent deploys stomping on each other
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: aegion-prod
+  GCP_REGION: us-central1
+  CLOUD_RUN_SERVICE: aegion-backend
+  ARTIFACT_REGISTRY: us-central1-docker.pkg.dev/aegion-prod/aegion/backend
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Gate: Run backend CI first — only deploy if tests pass
+  # ─────────────────────────────────────────────────────────────────────────
+  backend-ci:
+    name: Backend Tests
+    uses: ./.github/workflows/backend-ci.yml
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Deploy Backend → Cloud Run
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Cloud Run
+    needs: backend-ci
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.deploy_backend == true }}
+
+    # Workload Identity Federation — no long-lived service account keys stored in GitHub
+    permissions:
+      contents: read
+      id-token: write   # Required for WIF
+
+    outputs:
+      cloud_run_url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Authenticate with GCP via Workload Identity Federation (keyless)
+      # Setup: https://github.com/google-github-actions/auth#setup
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & Push Docker Image
+        run: |
+          IMAGE="${{ env.ARTIFACT_REGISTRY }}:${{ github.sha }}"
+          LATEST="${{ env.ARTIFACT_REGISTRY }}:latest"
+
+          docker build \
+            --tag "$IMAGE" \
+            --tag "$LATEST" \
+            --cache-from "$LATEST" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ./aegion-backend
+
+          docker push "$IMAGE"
+          docker push "$LATEST"
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          image: ${{ env.ARTIFACT_REGISTRY }}:${{ github.sha }}
+          region: ${{ env.GCP_REGION }}
+          flags: |
+            --min-instances=0
+            --max-instances=5
+            --memory=512Mi
+            --cpu=1
+            --port=8080
+            --allow-unauthenticated
+          env_vars: |
+            ENVIRONMENT=production
+          # Secrets injected from GCP Secret Manager (set up separately):
+          # secrets: |
+          #   SUPABASE_URL=supabase-url:latest
+          #   SUPABASE_SERVICE_KEY=supabase-service-key:latest
+          #   AUDIT_SIGNING_KEY=audit-signing-key:latest
+
+      - name: Verify Health Check
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Cloud Run URL: $URL"
+          # Wait for the service to be ready
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/v1/health/ready")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check passed (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "⏳ Attempt $i: HTTP $STATUS — retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
+
+      - name: Post Deployment Summary
+        run: |
+          echo "### 🚀 Backend Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.ARTIFACT_REGISTRY }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Deploy Frontend → Firebase Hosting
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend → Firebase Hosting
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.deploy_frontend == true }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: aegion-frontend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: aegion-frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: aegion-frontend
+        env:
+          # Inject the live Cloud Run URL so the frontend bundle hits production
+          NEXT_PUBLIC_API_URL: ${{ needs.deploy-backend.outputs.cloud_run_url }}
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: ${{ env.GCP_PROJECT_ID }}
+          entryPoint: ./aegion-frontend
+
+      - name: Post Deployment Summary
+        run: |
+          echo "### 🌐 Frontend Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL**: ${{ needs.deploy-backend.outputs.cloud_run_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hosting**: Firebase Hosting (aegion-prod)" >> $GITHUB_STEP_SUMMARY
