@@ -44,23 +44,45 @@ const CACHE_STATS = { hits: 640, misses: 360, savings: 12.80 };
 
 function BarMiniChart({ data, color = "#3b82f6" }: { data: { day: string; cost: number }[]; color?: string }) {
     const max = Math.max(...data.map(d => d.cost));
+    const svgH = 80;
+    const barW = 12;
+    const gap = 6;
+    const totalW = data.length * (barW + gap) - gap;
+
     return (
-        <div className="flex items-end gap-1.5 h-24">
-            {data.map((d, i) => (
-                <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                    <div
-                        className="bar-fill"
-                        style={{
-                            /* eslint-disable-next-line react/forbid-dom-props */
-                            ['--bar-h' as string]: `${(d.cost / max) * 100}%`,
-                            ['--bar-color' as string]: color,
-                        }}
-                        data-delay={i * 80}
-                    />
-                    <span className="text-[9px] text-slate-600">{d.day.split(" ")[1]}</span>
-                </div>
-            ))}
-        </div>
+        <svg viewBox={`0 0 ${totalW} ${svgH + 14}`} className="w-full" aria-label="Daily spend bar chart">
+            <defs>
+                <linearGradient id="barGrad" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+                    <stop offset="100%" stopColor={color} stopOpacity="1" />
+                </linearGradient>
+            </defs>
+            {data.map((d, i) => {
+                const barH = max > 0 ? (d.cost / max) * svgH : 0;
+                const x = i * (barW + gap);
+                const y = svgH - barH;
+                const label = d.day.split(" ")[1] ?? d.day;
+                return (
+                    <g key={d.day}>
+                        <rect
+                            x={x} y={y}
+                            width={barW} height={barH}
+                            rx={2} ry={2}
+                            fill="url(#barGrad)"
+                        />
+                        <text
+                            x={x + barW / 2} y={svgH + 11}
+                            textAnchor="middle"
+                            fontSize={8}
+                            fill="currentColor"
+                            className="text-slate-600"
+                        >
+                            {label}
+                        </text>
+                    </g>
+                );
+            })}
+        </svg>
     );
 }
 
