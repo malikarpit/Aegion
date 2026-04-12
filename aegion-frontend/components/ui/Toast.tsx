@@ -24,17 +24,17 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 const iconMap = {
-  success: <CheckCircle2 size={18} className="text-emerald-400" />,
-  error: <AlertCircle size={18} className="text-red-400" />,
-  info: <Info size={18} className="text-blue-400" />,
-  warning: <AlertTriangle size={18} className="text-amber-400" />,
+  success: <CheckCircle2 size={18} style={{ color: "var(--status-success)" }} />,
+  error: <AlertCircle size={18} style={{ color: "var(--status-error)" }} />,
+  info: <Info size={18} style={{ color: "var(--status-info)" }} />,
+  warning: <AlertTriangle size={18} style={{ color: "var(--status-warning)" }} />,
 };
 
-const borderMap = {
-  success: "border-l-emerald-500",
-  error: "border-l-red-500",
-  info: "border-l-blue-500",
-  warning: "border-l-amber-500",
+const borderColors: Record<string, string> = {
+  success: "var(--status-success)",
+  error: "var(--status-error)",
+  info: "var(--status-info)",
+  warning: "var(--status-warning)",
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -77,22 +77,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, x: 80, scale: 0.95 }}
               transition={{ duration: 0.25 }}
-              className={`
-                bg-[#111118] border border-white/10 border-l-2 ${borderMap[t.type]}
-                rounded-xl p-4 shadow-2xl shadow-black/40
-                flex items-start gap-3
-              `}
+              className="rounded-xl p-4 shadow-2xl flex items-start gap-3"
+              style={{
+                background: "var(--surface-1)",
+                border: "1px solid var(--border-default)",
+                borderLeft: `3px solid ${borderColors[t.type]}`,
+                boxShadow: "0 16px 48px hsla(248, 30%, 4%, 0.4)",
+              }}
             >
               <div className="mt-0.5">{iconMap[t.type]}</div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">{t.title}</p>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{t.title}</p>
                 {t.description && (
-                  <p className="text-xs text-slate-400 mt-0.5">{t.description}</p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>{t.description}</p>
                 )}
               </div>
               <button
                 onClick={() => removeToast(t.id)}
-                className="text-slate-500 hover:text-white transition-colors"
+                className="transition-colors"
+                style={{ color: "var(--text-muted)" }}
               >
                 <X size={14} />
               </button>
