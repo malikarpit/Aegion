@@ -98,14 +98,10 @@ class TestRubricEngine:
             "All inputs are validated. Error handling covers edge cases. "
             "Unit tests cover 85% of critical paths."
         )
-        try:
-            result = await engine.score(text, rubric_name="code_review", mode="heuristic")
-            assert isinstance(result, dict)
-            assert "composite_score" in result or "scores" in result or "overall" in result
-        except (TypeError, AttributeError) as e:
-            # Method signature may differ
-            result = engine.score_heuristic(text, rubric_name="code_review")
-            assert isinstance(result, dict)
+        # When no evaluator is passed, score() uses heuristic mode automatically
+        result = await engine.score(text, rubric_name="code_review")
+        assert isinstance(result, dict)
+        assert "weighted_total" in result or "scores" in result
 
     @pytest.mark.asyncio
     async def test_score_range(self, engine):

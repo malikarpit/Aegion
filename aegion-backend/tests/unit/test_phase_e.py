@@ -135,17 +135,27 @@ class TestBrowserTool:
 
     def test_browser_browse(self):
         """Browse a page and extract content."""
-        response = client.post(
-            "/api/v1/tools/browser/browse",
-            json={
-                "url": "https://example.com",
-                "extract_text": True,
-                "actions": [
-                    {"type": "wait", "delay_ms": 100},
-                ],
-            },
-            headers=AUTH_HEADERS,
-        )
+        from unittest.mock import patch
+        # Mock the underlying HTTP request or the entire browser service to avoid SSL errors
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = mock_client_class.return_value.__aenter__.return_value
+            mock_resp = mock_client.get.return_value
+            mock_resp.status_code = 200
+            mock_resp.text = "<html><head><title>Mocked Example</title></head><body><h1>Hello</h1><p>Test Content</p></body></html>"
+            mock_resp.url = "https://example.com"
+            mock_resp.headers = {"content-type": "text/html"}
+            
+            response = client.post(
+                "/api/v1/tools/browser/browse",
+                json={
+                    "url": "https://example.com",
+                    "extract_text": True,
+                    "actions": [
+                        {"type": "wait", "delay_ms": 100},
+                    ],
+                },
+                headers=AUTH_HEADERS,
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["url"] == "https://example.com"
@@ -154,15 +164,24 @@ class TestBrowserTool:
 
     def test_browser_extract(self):
         """Extract structured data from a page."""
-        response = client.post(
-            "/api/v1/tools/browser/extract",
-            json={
-                "url": "https://example.com",
-                "extract_links": True,
-                "extract_headings": True,
-            },
-            headers=AUTH_HEADERS,
-        )
+        from unittest.mock import patch
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = mock_client_class.return_value.__aenter__.return_value
+            mock_resp = mock_client.get.return_value
+            mock_resp.status_code = 200
+            mock_resp.text = "<html><head><title>Mocked Example</title></head><body><h1>Hello</h1><a href='#'>Link</a></body></html>"
+            mock_resp.url = "https://example.com"
+            mock_resp.headers = {"content-type": "text/html"}
+            
+            response = client.post(
+                "/api/v1/tools/browser/extract",
+                json={
+                    "url": "https://example.com",
+                    "extract_links": True,
+                    "extract_headings": True,
+                },
+                headers=AUTH_HEADERS,
+            )
         assert response.status_code == 200
         data = response.json()
         assert "title" in data

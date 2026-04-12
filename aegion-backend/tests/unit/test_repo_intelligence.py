@@ -1,8 +1,13 @@
 import pytest
 import asyncio
 from app.domain.repo import FileRecord, SymbolRecord
-from app.services.repo_intelligence.service import get_repo_service
+from app.services.repo_intelligence.service import get_repo_service, RepoIntelligenceService
 from app.adapters.persistence.event_store import InMemoryEventStore
+from tests.helpers.in_memory_repo import InMemoryRepoRepository
+
+# Reset singleton before test
+import app.services.repo_intelligence.service as _svc
+_svc._repo_service = None
 
 @pytest.mark.asyncio
 async def test_repo_intelligence_contract():
@@ -10,7 +15,8 @@ async def test_repo_intelligence_contract():
     
     # 1. Setup Service
     store = InMemoryEventStore()
-    service = get_repo_service(store)
+    repo = InMemoryRepoRepository()
+    service = get_repo_service(store, repository=repo)
     
     # 2. Start Scan (runs in background)
     scan_id = await service.start_scan("test_ws")

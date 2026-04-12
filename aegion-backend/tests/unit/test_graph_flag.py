@@ -12,16 +12,24 @@ from unittest.mock import patch, MagicMock
 from app.services.graph_provider import get_shared_graph, InMemoryKnowledgeGraph
 
 class TestGraphProviderFlag:
-    def teardown_method(self):
-        # Reset singleton to ensure clean state
+    def setup_method(self):
         import app.services.graph_provider as gp
+        self._orig_graph = gp._shared_graph
+        self._orig_service = gp._shared_service
         gp._shared_graph = None
         gp._shared_service = None
 
-    def test_default_is_memory(self):
+    def teardown_method(self):
+        import app.services.graph_provider as gp
+        gp._shared_graph = self._orig_graph
+        gp._shared_service = self._orig_service
+
+    def test_default_is_postgres(self):
+        """After Phase 87, default GRAPH_BACKEND is 'postgres'."""
+        from app.adapters.postgres.postgres_graph import PostgresKnowledgeGraph
         with patch.dict(os.environ, {}, clear=True):
             graph = get_shared_graph()
-            assert isinstance(graph, InMemoryKnowledgeGraph)
+            assert isinstance(graph, PostgresKnowledgeGraph)
 
     def test_explicit_memory(self):
         with patch.dict(os.environ, {"GRAPH_BACKEND": "memory"}):
