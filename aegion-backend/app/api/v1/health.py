@@ -27,28 +27,16 @@ class HealthStatus(str, Enum):
     UNHEALTHY = "unhealthy"
 
 
-async def check_firestore() -> tuple[bool, str]:
-    """Check Firestore connectivity with a real lightweight probe."""
+async def check_supabase() -> tuple[bool, str]:
+    """Check Supabase connectivity with a lightweight probe."""
     try:
-        from google.cloud import firestore
-        from google.auth.exceptions import DefaultCredentialsError
-        
-        try:
-            db = firestore.AsyncClient()
-            # Lightweight server_date() call — costs almost nothing
-            await asyncio.wait_for(
-                db.collection("_health").document("ping").get(),
-                timeout=3.0,
-            )
-            return True, "connected"
-        except DefaultCredentialsError:
-             # In dev/bootstrap, we might not have real keys yet
-            return True, "credentials_missing (dev mode)"
-    except ImportError:
-        # Firestore SDK not installed — running without Firestore
-        return True, "sdk_not_installed (in-memory mode)"
-    except asyncio.TimeoutError:
-        return False, "timeout (>3s)"
+        from ...db.supabase_client import get_supabase_client
+        client = get_supabase_client()
+        # Lightweight query — select 1 row from sessions (or any table)
+        result = client.table("sessions").select("id").limit(1).execute()
+        return True, "connected"
+    except ValueError as e:
+        return True, f"not_configured ({e})"
     except Exception as e:
         return False, f"error: {type(e).__name__}: {e}"
 
@@ -128,16 +116,16 @@ async def readiness_probe() -> Dict[str, Any]:
     overall_healthy = True
 
     # Run dependency checks concurrently
-    firestore_result, redis_result, graph_result, chronos_result = await asyncio.gather(
-        check_firestore(),
+    supabase_result, redis_result, graph_result, chronos_result = await asyncio.gather(
+        check_supabase(),
         check_redis(),
         check_graph(),
         check_chronos(),
     )
 
-    firestore_ok, firestore_msg = firestore_result
-    checks["firestore"] = {"healthy": firestore_ok, "message": firestore_msg}
-    if not firestore_ok:
+    supabase_ok, supabase_msg = supabase_result
+    checks["supabase"] = {"healthy": supabase_ok, "message": supabase_msg}
+    if not supabase_ok:
         overall_healthy = False
 
     redis_ok, redis_msg = redis_result
@@ -179,8 +167,8 @@ async def detailed_health() -> Dict[str, Any]:
     import sys
 
     # Run all probes for real component status
-    firestore_result, redis_result, graph_result, chronos_result = await asyncio.gather(
-        check_firestore(),
+    supabase_result, redis_result, graph_result, chronos_result = await asyncio.gather(
+        check_supabase(),
         check_redis(),
         check_graph(),
         check_chronos(),
@@ -195,7 +183,7 @@ async def detailed_health() -> Dict[str, Any]:
     uptime_seconds = time.monotonic() - _startup_time
 
     return {
-        "status": HealthStatus.HEALTHY if all(r[0] for r in [firestore_result, redis_result, graph_result, chronos_result]) else HealthStatus.DEGRADED,
+        "status": HealthStatus.HEALTHY if all(r[0] for r in [supabase_result, redis_result, graph_result, chronos_result]) else HealthStatus.DEGRADED,
         "timestamp": TimeAuthority.now(),
         "service": "aegion-backend",
         "version": "0.1.0",
@@ -206,7 +194,7 @@ async def detailed_health() -> Dict[str, Any]:
         },
         "components": {
             "api": {"status": "healthy", "message": "running"},
-            "firestore": _component(*firestore_result),
+            "supabase": _component(*supabase_result),
             "redis": _component(*redis_result),
             "graph": _component(*graph_result),
             "chronos": _component(*chronos_result),
@@ -222,3 +210,46 @@ async def health_metrics_endpoint() -> Dict[str, Any]:
         return get_health_metrics()
     except ImportError:
         return {"error": "metrics middleware not installed"}
+
+
+@router.get("/health/engine")
+async def engine_health() -> Response:
+    """
+    Council engine health check — aggregate provider circuit breaker status.
+
+    Returns:
+        200 + {"health": "operational", ...}   — all providers healthy
+        200 + {"health": "degraded", ...}      — some providers failing
+        503 + {"health": "critical", ...}      — most providers failing
+        503 + {"health": "unavailable", ...}   — all providers failing
+
+    Used by:
+        - Cognitive Sidebar OS system state strip
+        - Web dashboard health indicator
+        - Load balancer health checks
+    """
+    import json
+    try:
+        from ...services.council_kernel.engine import get_council_engine
+        from ...services.council_kernel.types import EngineHealth
+
+        engine = get_council_engine()
+        status = engine.get_health()
+
+        http_status = 200
+        if status.health in (EngineHealth.CRITICAL, EngineHealth.UNAVAILABLE):
+            http_status = 503
+
+        return Response(
+            content=json.dumps(status.model_dump(), default=str),
+            status_code=http_status,
+            media_type="application/json",
+        )
+    except Exception as exc:
+        logger.error(f"Engine health check failed: {exc}")
+        return Response(
+            content=json.dumps({"health": "unavailable", "error": str(exc)}),
+            status_code=503,
+            media_type="application/json",
+        )
+

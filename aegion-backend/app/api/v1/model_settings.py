@@ -332,9 +332,9 @@ async def get_usage(
         groups: Dict[str, Dict] = {}
         for r in records:
             if group_by == "model":
-                key = r.get("models", "unknown")
+                key = r.get("model", "unknown")
             elif group_by == "provider":
-                key = r.get("models", "unknown").split("/")[0] if "/" in r.get("models", "") else r.get("models", "unknown")
+                key = r.get("model", "unknown").split("/")[0] if "/" in r.get("model", "") else r.get("provider", "unknown")
             else:
                 key = r.get("created_at", "")[:10]  # YYYY-MM-DD
 

@@ -159,3 +159,66 @@ async def leave_presence(
     if existing:
         await _presence_store.delete(uid)
     logger.info(f"User {uid} left presence")
+
+
+# W5.2: Active user tracking with stale heartbeat cleanup
+PRESENCE_TTL_SECONDS = 120  # Users with heartbeat older than 2 minutes are stale
+
+
+@router.get("/active/users", response_model=WorkspacePresenceResponse)
+async def get_active_users(
+    user: AuthorityContext = Depends(get_current_user),
+    x_workspace_id: str = Header(default="default"),
+):
+    """
+    Get actively connected users (W5.2).
+    
+    Only returns users whose last heartbeat is within the TTL window.
+    Stale users are automatically excluded.
+    """
+    now = datetime.now(timezone.utc)
+    all_presence = await _presence_store.list_all()
+    
+    active_users = []
+    for p in all_presence:
+        if p.workspace_id != x_workspace_id:
+            continue
+        if p.status == PresenceStatus.OFFLINE:
+            continue
+        age = (now - p.last_heartbeat).total_seconds()
+        if age <= PRESENCE_TTL_SECONDS:
+            active_users.append(p)
+
+    return WorkspacePresenceResponse(
+        workspace_id=x_workspace_id,
+        online_count=len(active_users),
+        users=[_to_response(u) for u in active_users],
+    )
+
+
+@router.post("/cleanup", status_code=status.HTTP_200_OK)
+async def cleanup_stale_presence(
+    user: AuthorityContext = Depends(get_current_user),
+):
+    """
+    Remove stale presence entries (W5.2).
+    
+    Marks users as offline and removes entries where the last heartbeat
+    is older than the TTL. Returns count of cleaned entries.
+    """
+    now = datetime.now(timezone.utc)
+    all_presence = await _presence_store.list_all()
+    
+    cleaned = 0
+    for p in all_presence:
+        age = (now - p.last_heartbeat).total_seconds()
+        if age > PRESENCE_TTL_SECONDS:
+            await _presence_store.delete(p.user_id)
+            cleaned += 1
+            logger.debug(f"Cleaned stale presence: {p.user_id} (age: {age:.0f}s)")
+
+    if cleaned:
+        logger.info(f"Presence cleanup: removed {cleaned} stale entries")
+    
+    return {"cleaned": cleaned, "remaining": len(all_presence) - cleaned}
+
