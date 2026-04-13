@@ -115,7 +115,7 @@ class ModelSettingsEngine:
             from ..db.supabase_client import get_supabase_client
             result = (
                 get_supabase_client()
-                .table("model_settings")
+                .table("workspace_model_settings")
                 .select("*")
                 .eq("workspace_id", workspace_id)
                 .maybe_single()
@@ -138,7 +138,7 @@ class ModelSettingsEngine:
 
         try:
             from ..db.supabase_client import get_supabase_client
-            get_supabase_client().table("model_settings").upsert(
+            get_supabase_client().table("workspace_model_settings").upsert(
                 record, on_conflict="workspace_id"
             ).execute()
         except Exception as exc:
@@ -163,8 +163,8 @@ class ModelSettingsEngine:
         overrides[path] = value
 
         try:
-            from ...db.supabase_client import get_supabase_client
-            get_supabase_client().table("model_settings").update({
+            from ..db.supabase_client import get_supabase_client
+            get_supabase_client().table("workspace_model_settings").update({
                 "settings": settings,
                 "custom_overrides": overrides,
                 "active_preset": "custom",
@@ -184,7 +184,7 @@ class ModelSettingsEngine:
 
         daily_spend, monthly_spend = 0.0, 0.0
         try:
-            from ...db.supabase_client import get_supabase_client
+            from ..db.supabase_client import get_supabase_client
             client = get_supabase_client()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             this_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -253,7 +253,8 @@ model_settings = ModelSettingsEngine()
 # SQL migration (run once in Supabase):
 # ---------------------------------------------------------------------------
 MODEL_SETTINGS_SQL = """
-CREATE TABLE IF NOT EXISTS model_settings (
+-- NOTE: Actual table is 'workspace_model_settings' per migration 20260409000007.
+CREATE TABLE IF NOT EXISTS workspace_model_settings (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id     UUID NOT NULL UNIQUE REFERENCES workspaces(id) ON DELETE CASCADE,
     active_preset    TEXT NOT NULL DEFAULT 'balanced',

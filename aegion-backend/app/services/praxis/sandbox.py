@@ -318,16 +318,21 @@ class DockerSandboxRunner:
             "SECURITY: Executing command without sandbox isolation",
             extra={"environment": self._environment, "command_prefix": command[:50]},
         )
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_shell(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=working_directory,
-            ),
-            timeout=timeout_sec,
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=working_directory,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout_sec,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise asyncio.TimeoutError(f"TIMEOUT: exceeded {timeout_sec}s")
+            
         output = (stdout.decode(errors="replace") + stderr.decode(errors="replace"))[:10000]
         return output, proc.returncode or 0, violations
 

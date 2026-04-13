@@ -74,7 +74,7 @@ class WorkspaceCouncilConfig(BaseModel):
     red_team_min_score: float = 0.5  # Below this = flag the result
 
     # ── Temporal Memory (Phase 49) ──
-    temporal_memory_enabled: bool = False
+    temporal_memory_enabled: bool = True  # W2.2: default-enabled per blueprint
     temporal_recall_top_k: int = 3
     temporal_outcome_window_days: int = 30
 
