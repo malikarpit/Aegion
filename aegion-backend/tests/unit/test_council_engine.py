@@ -139,7 +139,7 @@ class TestCouncilEngine:
                 constitution_enforcement=True,
                 constitution_block_on_violation=True,
             )
-            with patch('app.services.council_kernel.engine.get_constitution') as mock_const:
+            with patch('app.services.council_kernel.constitution.get_constitution') as mock_const:
                 mock_const_instance = MagicMock()
                 mock_const_instance.check_query.return_value = ["Potential PII exposure"]
                 mock_const.return_value = mock_const_instance
@@ -223,19 +223,19 @@ class TestCouncilEngine:
 
     @pytest.mark.asyncio
     async def test_dag_pipeline_when_enabled(self, engine, mock_model_response):
-        """PARENT council should use DAG pipeline when dag_pipeline_enabled=True."""
+        """PARENT council always uses _parent_council (W1.1: DAG deprecated)."""
         with patch.object(engine, '_get_config') as mock_config:
             mock_config.return_value = MagicMock(
                 constitution_enforcement=False,
                 dag_pipeline_enabled=True,
             )
             with patch.object(engine, '_check_semantic_cache', new_callable=AsyncMock, return_value=None):
-                with patch.object(engine, '_dag_parent_council', new_callable=AsyncMock) as mock_dag:
-                    mock_dag.return_value = CouncilResult(
+                with patch.object(engine, '_parent_council', new_callable=AsyncMock) as mock_parent:
+                    mock_parent.return_value = CouncilResult(
                         council_type=CouncilType.PARENT,
                         profile=CouncilProfile.COMPLEX,
                         query="Complex query",
-                        synthesis="DAG answer",
+                        synthesis="Sequential answer",
                         consensus_score=0.90,
                         dissenting_views=[],
                         total_cost_usd=0.04,
@@ -243,7 +243,7 @@ class TestCouncilEngine:
                     )
                     result = await engine.consult("ws1", "Complex query", CouncilType.PARENT)
 
-        mock_dag.assert_called_once()
+        mock_parent.assert_called_once()
 
     def test_classify_trivial(self, engine):
         """Short simple queries should classify as TRIVIAL or SIMPLE."""

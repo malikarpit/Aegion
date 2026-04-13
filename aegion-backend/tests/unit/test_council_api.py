@@ -50,9 +50,15 @@ def setup_mock_service():
         "transcript": [{"member": "mem-1", "vote": "support", "analysis": "LGTM"}]
     }
 
-# Override dependencies
-app.dependency_overrides[get_current_user] = mock_get_current_user
-app.dependency_overrides[get_council_service] = lambda: mock_service
+@pytest.fixture(autouse=True)
+def setup_council_overrides():
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    app.dependency_overrides[get_council_service] = lambda request=None: mock_service
+    if not hasattr(app.state, 'council_service'):
+        app.state.council_service = mock_service
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_council_service, None)
 
 def test_get_session():
     setup_mock_service()

@@ -7,9 +7,13 @@ from app.core.security import get_current_user, AuthorityContext
 async def mock_get_current_user():
     return AuthorityContext(user_id="test_user", permissions=["admin"], role="admin")
 
-app.dependency_overrides[get_current_user] = mock_get_current_user
-
 import pytest_asyncio
+
+@pytest.fixture(autouse=True)
+def setup_chronos_overrides():
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 @pytest_asyncio.fixture
 async def client():
