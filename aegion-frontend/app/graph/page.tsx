@@ -5,11 +5,18 @@ export default function GraphPage() {
         <div className="p-8 h-full flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-white">Project Graph</h1>
-                    <p className="text-slate-400">Visualizing Decision Provenance & Lineage</p>
+                    <h1 className="text-3xl font-bold" style={{ color: "var(--text-primary)" }}>Project Graph</h1>
+                    <p style={{ color: "var(--text-secondary)" }}>Visualizing Decision Provenance &amp; Lineage</p>
                 </div>
                 <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/30 transition-colors text-sm font-medium">
+                    <button
+                        className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        style={{
+                            background: "hsla(260, 100%, 70%, 0.1)",
+                            color: "var(--accent-reason)",
+                            border: "1px solid hsla(260, 100%, 70%, 0.2)",
+                        }}
+                    >
                         Export Topology
                     </button>
                 </div>
