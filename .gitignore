@@ -169,3 +169,9 @@ bandit-report.json
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# ---------- Ignored Legacy & Temporary Folders ----------
+aegion-extension/
+aegion-organism/
+scratch/
+work after 19 april/

@@ -85,11 +85,9 @@ steps:
       - --min-instances=$_MIN_INSTANCES
       - --max-instances=$_MAX_INSTANCES
       - --allow-unauthenticated
-      - --set-env-vars=ENVIRONMENT=production
-      # Secrets are injected via Secret Manager — add/adjust as needed:
-      # - --set-secrets=SUPABASE_URL=supabase-url:latest
-      # - --set-secrets=SUPABASE_SERVICE_KEY=supabase-service-key:latest
-      # - --set-secrets=AUDIT_SIGNING_KEY=audit-signing-key:latest
+      - --set-env-vars=ENVIRONMENT=production,GRAPH_BACKEND=postgres
+      # Phase 92: Secrets injected via GCP Secret Manager
+      - --set-secrets=SUPABASE_URL=supabase-url:latest,SUPABASE_SERVICE_KEY=supabase-service-key:latest,SUPABASE_DB_HOST=supabase-db-host:latest,SUPABASE_DB_PASSWORD=supabase-db-password:latest,AUDIT_SIGNING_KEY=audit-signing-key:latest,OPENAI_API_KEY=openai-api-key:latest,FIREBASE_PROJECT_ID=firebase-project-id:latest
       - --port=8080
 
   # ─── Step 5: Build frontend ──────────────────────────────────────────────
