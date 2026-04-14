@@ -1,12 +1,15 @@
 from fastapi.testclient import TestClient
 from app.main import app
-from app.services.repo_intelligence.service import get_repo_service
 from app.api.v1.repo import get_service
 from app.adapters.persistence.event_store import InMemoryEventStore
 from app.domain.repo import FileRecord, SymbolRecord
 from app.domain.git_models import CommitRecord
 from datetime import datetime, timezone
 import pytest
+import asyncio
+
+from app.services.repo_intelligence.service import RepoIntelligenceService
+from tests.helpers.in_memory_repo import InMemoryRepoRepository
 
 # Test Client
 client = TestClient(app)
@@ -15,31 +18,31 @@ client.headers = {
     "X-Aegion-Intent": "unit-test"
 }
 
-from app.services.repo_intelligence.service import RepoIntelligenceService
-
 # Mock Service Injection
-def get_mock_service():
+async def get_mock_service():
     store = InMemoryEventStore()
+    repo = InMemoryRepoRepository()
     # Direct instantiation to avoid singleton state from other tests
-    service = RepoIntelligenceService(store, root_path=".")
-    
-    # Pre-populate data
-    service._scans["scan-1"] = None # Just a placeholder key
-    
+    service = RepoIntelligenceService(store, repo, root_path=".")
+
+    # Pre-populate data via repository
     symbol = SymbolRecord(symbol_id="s1", name="Main", type="class", file_path="main.py", line_start=1, line_end=10)
-    
-    service._files["main.py"] = FileRecord(
+
+    file_record = FileRecord(
         file_path="main.py", content_hash="h1", language="python", size_bytes=100,
         last_modified=datetime.now(timezone.utc), loc=20,
         symbols=[symbol]
     )
-    service._symbols["s1"] = symbol
-    
-    service._commits["c1"] = CommitRecord(
+    commit = CommitRecord(
         sha="c1", message="feat: init", author_name="User", author_email="u@e.com",
         timestamp=datetime.now(timezone.utc), changed_files=["main.py"]
     )
-    
+
+    # Seed data asynchronously
+    await repo.save_file_record(file_record)
+    await repo.save_symbol(symbol)
+    await repo.save_commit(commit)
+
     return service
 
 from app.core.security import get_current_user, AuthorityContext, Role

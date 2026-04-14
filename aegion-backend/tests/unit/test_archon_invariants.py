@@ -174,17 +174,18 @@ class TestFreezeMode:
         assert invariants.freeze_blocks_all_mutations(False, True)
         assert invariants.freeze_blocks_all_mutations(False, False)
     
-    def test_freeze_mode_activates(self, archon: ArchonGates):
+    @pytest.mark.asyncio
+    async def test_freeze_mode_activates(self, archon: ArchonGates):
         """Test freeze mode activation."""
         assert not archon._freeze_mode
         
-        archon.activate_freeze("admin", "Emergency")
+        await archon.activate_freeze("admin", "Emergency")
         assert archon._freeze_mode
         
         with pytest.raises(GovernanceError):
             archon.guard_writable()
         
-        archon.deactivate_freeze("admin", "Resolved")
+        await archon.deactivate_freeze("admin", "Resolved")
         assert not archon._freeze_mode
         
         # Should not raise

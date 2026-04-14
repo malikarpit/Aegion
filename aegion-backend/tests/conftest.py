@@ -48,7 +48,8 @@ async def fake_delete(self, key: str, workspace_id: str = "default") -> bool:
     if self.namespace in _in_memory_store:
         if key in _in_memory_store[self.namespace]:
             del _in_memory_store[self.namespace][key]
-    return True
+            return True
+    return False
 
 async def fake_list_keys(self, workspace_id: str = "default") -> List[str]:
     return list(_in_memory_store.get(self.namespace, {}).keys())
