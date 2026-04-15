@@ -19,11 +19,20 @@ from ...contracts.risk import (
 )
 
 
-# Shared graph service — all modules use the same graph instance
+# Service singletons — risk & drift are cheap; graph is lazy-loaded
 _risk_engine = RiskEngine()
 _drift_detector = DriftDetector()
-_graph_service = get_shared_graph_service()
 _cognitive_service = CognitiveSafetyService()
+
+
+def _get_graph_service() -> GraphService:
+    """Lazy-load graph service to avoid import-time failures."""
+    global _graph_service
+    try:
+        _graph_service  # noqa: F841 – already initialised?
+    except NameError:
+        _graph_service = get_shared_graph_service()
+    return _graph_service
 
 
 # ========== Request/Response Models ==========
@@ -83,7 +92,7 @@ class RecordDecisionRequest(BaseModel):
 
 # ========== Sentinel Router ==========
 
-sentinel_router = APIRouter(prefix="/sentinel", tags=["sentinel"])
+sentinel_router = APIRouter(prefix="/sentinel/analytics", tags=["sentinel-analytics"])
 
 
 @sentinel_router.post("/risk-score", response_model=RiskScore)
@@ -108,8 +117,8 @@ async def generate_risk_heatmap(request: HeatmapRequest):
     return heatmap
 
 
-@sentinel_router.post("/drift", response_model=DriftReport)
-async def detect_drift(request: DriftRequest):
+@sentinel_router.post("/drift/report", response_model=DriftReport)
+async def detect_analytics_drift(request: DriftRequest):
     """Detect pattern drift between periods."""
     report = await _drift_detector.detect_drift(
         workspace_id=request.workspace_id,
@@ -257,7 +266,7 @@ async def get_uncertainty_visualization(request: UncertaintyRequest):
 @noesis_router.post("/impact-analysis")
 async def analyze_impact(request: ImpactAnalysisRequest):
     """Analyze impact of a source change."""
-    impact = await _graph_service.analyze_impact(
+    impact = await _get_graph_service().analyze_impact(
         source_id=request.source_id,
         max_depth=request.max_depth
     )
@@ -275,7 +284,7 @@ async def record_decision(request: RecordDecisionRequest):
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail=str(e))
 
-    node = await _graph_service.record_decision(
+    node = await _get_graph_service().record_decision(
         decision_id=request.decision_id,
         proposal_id=request.proposal_id,
         approver_id=request.approver_id,
@@ -293,7 +302,7 @@ async def record_decision(request: RecordDecisionRequest):
 @noesis_router.get("/decisions/{decision_id}/provenance")
 async def get_decision_provenance(decision_id: str, depth: int = 3):
     """Get provenance chain for a decision."""
-    subgraph = await _graph_service.get_decision_provenance(
+    subgraph = await _get_graph_service().get_decision_provenance(
         decision_id=decision_id,
         depth=depth
     )
@@ -315,5 +324,5 @@ async def get_decision_provenance(decision_id: str, depth: int = 3):
 @noesis_router.get("/workspace/{workspace_id}/topology")
 async def get_workspace_topology(workspace_id: str):
     """Get topology summary for a workspace."""
-    topology = await _graph_service.get_workspace_topology(workspace_id)
+    topology = await _get_graph_service().get_workspace_topology(workspace_id)
     return topology

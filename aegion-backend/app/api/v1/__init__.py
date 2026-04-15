@@ -10,7 +10,8 @@ from .drafts import router as drafts_router
 from .recovery import router as recovery_router
 from .decisions import router as decisions_router
 from .evidence import router as evidence_router, edg_router
-from .analytics import sentinel_router, noesis_router
+from .analytics import sentinel_router as sentinel_analytics_router, noesis_router
+from .sentinel import router as sentinel_domain_router
 from .ghost_text import router as ghost_text_router
 from .websocket import router as websocket_router
 from .rejections import router as rejections_router
@@ -50,6 +51,7 @@ from .auth import router as auth_router
 from .gateway import router as gateway_router
 from .batch import router as batch_router
 from .model_settings import router as model_settings_router
+from .graph_data import router as graph_data_router
 
 # Main v1 router
 router = APIRouter()
@@ -64,7 +66,8 @@ router.include_router(stream_router)
 router.include_router(drafts_router)
 router.include_router(sessions_router)
 router.include_router(edg_router)
-router.include_router(sentinel_router)
+router.include_router(sentinel_analytics_router)
+router.include_router(sentinel_domain_router)
 router.include_router(noesis_router)
 router.include_router(ghost_text_router)
 router.include_router(websocket_router)
@@ -104,5 +107,6 @@ router.include_router(collaboration_router, prefix="/collaboration", tags=["coll
 router.include_router(auth_router)
 router.include_router(batch_router)
 router.include_router(model_settings_router)
+router.include_router(graph_data_router)
 
 __all__ = ["router"]
