@@ -58,10 +58,16 @@ async def test_service_lineage(temp_git_repo):
     
     # Inject temp repo path
     from app.services.repo_intelligence.service import RepoIntelligenceService
-    service = RepoIntelligenceService(store, root_path=temp_git_repo)
+    from tests.helpers.in_memory_repo import InMemoryRepoRepository
+    repo = InMemoryRepoRepository()
+    service = RepoIntelligenceService(store, repo, root_path=temp_git_repo)
     
-    # Start scan (triggers mining)
+    # Start scan (triggers mining in background)
     await service.start_scan("test_ws")
+    
+    # Wait for background scan to complete
+    import asyncio
+    await asyncio.sleep(2.0)
     
     # Mine should have found 2 commits
     scan = await service.get_latest_scan("test_ws")

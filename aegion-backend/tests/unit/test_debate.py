@@ -47,14 +47,13 @@ class TestDebateEngine:
         )
         models = [("openai", "gpt-4o"), ("anthropic", "claude-sonnet")]
 
-        result = await engine.run(
-            query="Should we use REST or GraphQL?",
+        result = await engine.debate(
+            proposition="Should we use REST or GraphQL?",
             models=models,
-            max_rounds=2,
         )
 
         assert result is not None
-        assert hasattr(result, 'synthesis') or hasattr(result, 'response')
+        assert "final_position" in result or "consensus" in result
 
     @pytest.mark.asyncio
     async def test_debate_respects_max_rounds(self, engine, mock_router):
@@ -69,7 +68,7 @@ class TestDebateEngine:
         mock_router.call = counting_call
         models = [("openai", "gpt-4o"), ("anthropic", "claude-sonnet")]
 
-        await engine.run(query="Debatable topic", models=models, max_rounds=2)
+        await engine.debate(proposition="Debatable topic", models=models)
 
         # With 2 models and 2 rounds + synthesis, expect bounded calls
         # Each round = len(models) calls, plus synthesis
@@ -92,7 +91,7 @@ class TestDebateEngine:
         mock_router.call = round_responses
         models = [("openai", "gpt-4o"), ("anthropic", "claude-sonnet")]
 
-        result = await engine.run(query="Monolith vs microservices?", models=models, max_rounds=2)
+        result = await engine.debate(proposition="Monolith vs microservices?", models=models)
         assert result is not None
 
     @pytest.mark.asyncio
@@ -101,10 +100,10 @@ class TestDebateEngine:
         mock_router.call.return_value = _mock_response("I agree. Position confirmed.")
         models = [("openai", "gpt-4o"), ("anthropic", "claude-sonnet")]
 
-        result = await engine.run(query="test", models=models, max_rounds=1)
+        result = await engine.debate(proposition="test", models=models)
 
-        if hasattr(result, 'total_cost_usd'):
-            assert result.total_cost_usd >= 0
+        if "total_cost_usd" in result:
+            assert result["total_cost_usd"] >= 0
 
 
 class TestConvergenceDetection:
