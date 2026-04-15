@@ -1,0 +1,13 @@
+[
+  {
+    "model_id": "custom-local-llama",
+    "provider": "ollama",
+    "display_name": "Local Llama 3.1 70B",
+    "context_window": 131072,
+    "max_output_tokens": 4096,
+    "input_price_per_m": 0.0,
+    "output_price_per_m": 0.0,
+    "capabilities": ["text", "code"],
+    "tier": 2
+  }
+]
