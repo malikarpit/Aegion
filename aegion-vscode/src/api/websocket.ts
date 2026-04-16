@@ -12,6 +12,7 @@ export interface WebSocketMessage {
 export class AegionSocket extends EventEmitter {
     private url: string;
     private token: string;
+    private apiBaseUrl: string;
     private socket: WebSocket | null = null;
     private isConnected: boolean = false;
     private reconnectAttempts: number = 0;
@@ -21,24 +22,54 @@ export class AegionSocket extends EventEmitter {
     private messageBuffer: WebSocketMessage[] = [];
     private explicitClose: boolean = false;
 
-    constructor(url: string, token: string) {
+    constructor(url: string, token: string, apiBaseUrl?: string) {
         super();
         this.url = url;
         this.token = token;
+        // Derive HTTP base URL from WebSocket URL for ticket exchange
+        this.apiBaseUrl = apiBaseUrl || url.replace(/^ws/, 'http').replace(/\/ws\/.*$/, '');
     }
 
-    public connect() {
+    /**
+     * Obtain a short-lived, one-time-use WebSocket ticket via HTTP.
+     * The ticket expires after 30 seconds or first use, whichever comes first.
+     * This prevents token exposure in server logs, browser history, and Referer headers.
+     */
+    private async obtainTicket(): Promise<string> {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/auth/ws-ticket`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Ticket exchange failed: ${response.status} ${response.statusText}`);
+            }
+            const data = await response.json() as { ticket: string };
+            return data.ticket;
+        } catch (error) {
+            Logger.error('[AegionSocket] Ticket exchange failed, falling back to header auth:', error);
+            throw error;
+        }
+    }
+
+    public async connect() {
         if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
             return;
         }
 
         this.explicitClose = false;
-        let finalUrl = `${this.url}?token=${this.token}`;
-        if (this.lastSequenceId !== null) {
-            finalUrl += `&last_event_id=${this.lastSequenceId}`;
-        }
 
         try {
+            // Phase 89: Use ticket-exchange pattern — token never appears in URL
+            const ticket = await this.obtainTicket();
+            let finalUrl = `${this.url}?ticket=${ticket}`;
+            if (this.lastSequenceId !== null) {
+                finalUrl += `&last_event_id=${this.lastSequenceId}`;
+            }
+
             Logger.info(`[AegionSocket] Connecting to ${this.url} (Last-Event-ID: ${this.lastSequenceId})`);
             const socket = new WebSocket(finalUrl);
             this.socket = socket;

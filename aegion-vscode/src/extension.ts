@@ -86,15 +86,13 @@ export function activate(context: vscode.ExtensionContext) {
     const sidebarProvider = new AegionSidebarProvider(context.extensionUri, sessionManager);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('aegion.views.context', sidebarProvider),
-        vscode.window.registerWebviewViewProvider('aegion.views.governance', sidebarProvider),
-        vscode.window.registerWebviewViewProvider('aegion.views.system', sidebarProvider),
         vscode.window.registerWebviewViewProvider('aegion.views.participants', sidebarProvider),
     );
 
     // Phase 86: Register Model Settings Webview View
     const modelSettingsProvider = new AegionModelSettingsProvider(context.extensionUri, apiClient, sessionManager);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('aegion.modelSettingsView', modelSettingsProvider)
+        vscode.window.registerWebviewViewProvider('aegion.modelSettingsView', modelSettingsProvider),
     );
 
     // Initialize Governance Status Bar

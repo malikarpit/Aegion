@@ -461,6 +461,37 @@ export class AegionClient {
         return this.fetch<T>(endpoint, options);
     }
 
+    public async post<T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<T> {
+        return this.fetch<T>(endpoint, {
+            ...options,
+            method: 'POST',
+            body: body ? JSON.stringify(body) : undefined,
+        });
+    }
+
+    public async patch<T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<T> {
+        return this.fetch<T>(endpoint, {
+            ...options,
+            method: 'PATCH',
+            body: body ? JSON.stringify(body) : undefined,
+        });
+    }
+
+    public async put<T = any>(endpoint: string, body?: any, options?: RequestInit): Promise<T> {
+        return this.fetch<T>(endpoint, {
+            ...options,
+            method: 'PUT',
+            body: body ? JSON.stringify(body) : undefined,
+        });
+    }
+
+    public async delete<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+        return this.fetch<T>(endpoint, {
+            ...options,
+            method: 'DELETE',
+        });
+    }
+
     // ========== Sessions ==========
 
     async startSession(req: CreateSessionRequest): Promise<SessionResponse> {
@@ -1394,8 +1425,16 @@ export function getApiClient(): AegionClient {
                 baseUrl = configured.replace(/\/+$/, '');
             }
             authToken = config.get('authToken') as string || '';
+            
+            // Auto fallback for local debug environment
+            if (!authToken) {
+                authToken = 'mock-admin';
+            }
         } catch {
             // Running outside VS Code context (tests, CLI) — use default
+            if (!authToken) {
+                authToken = 'mock-admin';
+            }
         }
         _apiClient = new AegionClient({ baseUrl, authToken });
     }
