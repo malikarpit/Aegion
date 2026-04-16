@@ -303,6 +303,167 @@ class PromptCompressor:
 
         return score
 
+    # ══════════════════════════════════════════════
+    # W7.1: Sliding Window Context Pruning (Phase 79)
+    # ══════════════════════════════════════════════
+
+    def importance_score(self, chunk: str, recency: float = 0.5) -> float:
+        """
+        Score a context chunk's importance for pruning decisions (W7.1).
+
+        Factors:
+          - Keyword density: governance/technical terms per word
+          - Recency: newer chunks score higher (0.0=oldest, 1.0=newest)
+          - Force-token presence: governance-critical content boosted
+          - Length: very short chunks penalized (likely noise)
+
+        Args:
+            chunk: Text content of the chunk.
+            recency: Recency weight (0.0 = oldest, 1.0 = most recent).
+
+        Returns:
+            Importance score (higher = more important, typically 0–10).
+        """
+        if not chunk or not chunk.strip():
+            return 0.0
+
+        words = chunk.lower().split()
+        if not words:
+            return 0.0
+
+        word_set = set(words)
+        score = 0.0
+
+        # Recency bias — recent context is more relevant
+        score += recency * 3.0
+
+        # Force token presence
+        chunk_lower = chunk.lower()
+        for token in _FORCE_TOKENS:
+            if token.lower() in chunk_lower:
+                score += 2.0
+                break
+
+        # Technical keyword density
+        tech_terms = {
+            "api", "database", "function", "class", "module", "error",
+            "exception", "config", "deployment", "endpoint", "schema",
+            "query", "mutation", "migration", "index", "constraint",
+            "decision", "proposal", "risk", "sentinel", "governance",
+        }
+        density = len(word_set & tech_terms) / max(len(word_set), 1)
+        score += density * 4.0
+
+        # Code block bonus
+        if "```" in chunk or "def " in chunk or "class " in chunk:
+            score += 1.5
+
+        # Length penalty — very short chunks are often noise
+        if len(words) < 5:
+            score -= 1.0
+        elif len(words) > 50:
+            score += 0.5  # Substantial content bonus
+
+        # Stopword ratio penalty
+        stopword_ratio = len(word_set & _STOPWORDS) / max(len(word_set), 1)
+        if stopword_ratio > 0.7:
+            score -= 2.0
+
+        return max(0.0, score)
+
+    def sliding_window_prune(
+        self,
+        chunks: List[str],
+        max_tokens: int,
+        tokens_per_word: float = 1.3,
+    ) -> List[str]:
+        """
+        Prune context chunks using a sliding window with importance scoring (W7.1).
+
+        Algorithm:
+          1. Score each chunk by importance (with recency weighting).
+          2. Sort by importance descending.
+          3. Greedily add chunks until token budget exhausted.
+          4. Return selected chunks in their ORIGINAL order.
+
+        Args:
+            chunks: List of context text chunks (oldest first).
+            max_tokens: Maximum token budget for output.
+            tokens_per_word: Approximation factor for word→token conversion.
+
+        Returns:
+            Pruned list of chunks, maintaining original order.
+        """
+        if not chunks:
+            return []
+
+        total_words = sum(len(c.split()) for c in chunks)
+        total_tokens_est = int(total_words * tokens_per_word)
+
+        # Fast path: everything fits
+        if total_tokens_est <= max_tokens:
+            return chunks
+
+        # Score each chunk with recency weighting
+        n = len(chunks)
+        scored: List[tuple] = []
+        for i, chunk in enumerate(chunks):
+            recency = (i + 1) / n  # 0→1 (oldest→newest)
+            importance = self.importance_score(chunk, recency=recency)
+            word_count = len(chunk.split())
+            scored.append((importance, i, chunk, word_count))
+
+        # Sort by importance descending
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Greedily select chunks within budget
+        budget_words = int(max_tokens / tokens_per_word)
+        selected_indices = set()
+        used_words = 0
+
+        for importance, idx, chunk, wc in scored:
+            if used_words + wc > budget_words:
+                continue
+            selected_indices.add(idx)
+            used_words += wc
+
+        # Return in original order
+        result = [chunks[i] for i in sorted(selected_indices)]
+
+        logger.debug(
+            f"Context pruning: {len(chunks)}→{len(result)} chunks, "
+            f"{total_words}→{used_words} words "
+            f"({used_words/max(total_words,1):.0%} retained)"
+        )
+
+        return result
+
+    async def context_prune(
+        self,
+        context_parts: List[str],
+        max_tokens: int = 8000,
+    ) -> Dict:
+        """
+        High-level context pruning for the council engine (W7.1).
+
+        Combines sliding_window_prune with compression metrics.
+
+        Returns:
+            Dict with pruned_context, original_count, pruned_count, ratio
+        """
+        pruned = self.sliding_window_prune(context_parts, max_tokens)
+        original_words = sum(len(c.split()) for c in context_parts)
+        pruned_words = sum(len(c.split()) for c in pruned)
+
+        return {
+            "pruned_context": pruned,
+            "original_chunks": len(context_parts),
+            "pruned_chunks": len(pruned),
+            "original_words": original_words,
+            "pruned_words": pruned_words,
+            "ratio": pruned_words / max(original_words, 1),
+        }
+
 
 # Singleton
 _compressor: Optional[PromptCompressor] = None
