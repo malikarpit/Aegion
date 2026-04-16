@@ -1,12 +1,13 @@
 """
-Aegion Knowledge Graph Service — Phase 6.
+Aegion Knowledge Graph Service — Phase 6 (Phase 95: CodeBERT embedding).
 
 PostgreSQL-backed knowledge graph with pgvector semantic search.
 Wraps the existing PostgresKnowledgeGraph adapter (from Phase 3)
 and adds a higher-level domain interface used by API layers.
 
-Embedding model: all-MiniLM-L6-v2 (384-dim, ~80MB, CPU-friendly).
-Lazy-loaded on first use to avoid blocking startup.
+Embedding model (configurable via AEGION_EMBEDDING_MODEL):
+  Default: microsoft/codebert-base (768-dim, code-aware)
+  Fallback: all-MiniLM-L6-v2 (384-dim, general NLP)
 
 SQL functions required (migration 20260409000002_graph_functions.sql):
   - get_graph_neighbors(node_id, workspace_id, depth)
@@ -15,23 +16,36 @@ SQL functions required (migration 20260409000002_graph_functions.sql):
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional
 
 from ..db.supabase_client import get_supabase_client
 from ..core.logging import logger
+
+# Phase 95: Configurable embedding model
+_DEFAULT_MODEL = "microsoft/codebert-base"
+_FALLBACK_MODEL = "all-MiniLM-L6-v2"
+_EMBEDDING_MODEL = os.getenv("AEGION_EMBEDDING_MODEL", _DEFAULT_MODEL)
 
 # Lazy singleton — loaded on first use to avoid blocking startup
 _embedder = None
 
 
 def _get_embedder():
-    """Lazy-load sentence-transformers embedder."""
+    """Lazy-load sentence-transformers embedder (Phase 95: CodeBERT)."""
     global _embedder
     if _embedder is None:
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
-            _embedder = SentenceTransformer("all-MiniLM-L6-v2")
-            logger.info("sentence-transformers embedder loaded (all-MiniLM-L6-v2, 384-dim)")
+            try:
+                _embedder = SentenceTransformer(_EMBEDDING_MODEL)
+                dim = len(_embedder.encode("test"))
+                logger.info(f"Knowledge graph embedder loaded ({_EMBEDDING_MODEL}, {dim}-dim)")
+            except Exception as e:
+                logger.warning(f"Failed to load {_EMBEDDING_MODEL}: {e}, falling back to {_FALLBACK_MODEL}")
+                _embedder = SentenceTransformer(_FALLBACK_MODEL)
+                dim = len(_embedder.encode("test"))
+                logger.info(f"Knowledge graph embedder loaded (fallback: {_FALLBACK_MODEL}, {dim}-dim)")
         except ImportError:
             logger.warning(
                 "sentence-transformers not installed — semantic search disabled. "

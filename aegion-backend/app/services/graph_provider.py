@@ -24,7 +24,7 @@ import signal
 from typing import Optional, Dict, Any, Union
 
 from ..adapters.memory_graph import InMemoryKnowledgeGraph
-from ..adapters.postgres.postgres_graph import PostgresKnowledgeGraph
+from ..adapters.postgres.postgres_graph import PostgresKnowledgeGraph, PostgresConfig
 from ..ports.knowledge_graph import KnowledgeGraphPort
 from ..services.noesis import GraphService
 from ..core.logging import logger
@@ -201,13 +201,27 @@ def get_shared_graph() -> KnowledgeGraphPort:
     """Get the raw graph adapter (for low-level operations)."""
     global _shared_graph, _shared_service, _backend_type
     if _shared_graph is None:
-        backend = os.getenv("GRAPH_BACKEND", "memory").lower()
+        backend = os.getenv("GRAPH_BACKEND", "postgres").lower()
         if backend == "postgres":
-            from ..db.supabase_client import get_supabase_client
-            logger.info("Creating PostgresKnowledgeGraph backend (Phase 6)")
-            _shared_graph = PostgresKnowledgeGraph(get_supabase_client())
+            logger.info("Creating PostgresKnowledgeGraph backend (Phase 87)")
+            _shared_graph = PostgresKnowledgeGraph(
+                PostgresConfig(
+                    host=os.getenv("SUPABASE_DB_HOST", "localhost"),
+                    port=int(os.getenv("SUPABASE_DB_PORT", "54322")),
+                    database=os.getenv("SUPABASE_DB_NAME", "postgres"),
+                    user=os.getenv("SUPABASE_DB_USER", "postgres"),
+                    password=os.getenv("SUPABASE_DB_PASSWORD", "postgres"),
+                )
+            )
         elif backend == "neo4j":
-            from ..adapters.neo4j_graph import Neo4jKnowledgeGraph
+            try:
+                from ..adapters.neo4j_graph import Neo4jKnowledgeGraph
+            except ImportError:
+                logger.error("GRAPH_BACKEND=neo4j but neo4j adapter not installed — falling back to memory")
+                _shared_graph = InMemoryKnowledgeGraph()
+                _backend_type = "memory"
+                _shared_service = GraphService(_shared_graph)
+                return _shared_graph
             
             uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
             user = os.getenv("NEO4J_USER", "neo4j")
@@ -239,12 +253,20 @@ async def check_graph_connection() -> bool:
 
     if _backend_type == "neo4j":
         try:
-             # Just getting statistics is a sufficient liveness check for now
-             # Ideally execute "RETURN 1" if the adapter exposed raw query capability publicly
              await _shared_graph.get_statistics()
              return True
         except Exception as e:
              raise RuntimeError(f"Neo4j liveness check failed: {e}")
+    elif _backend_type == "postgres":
+        try:
+             healthy = await _shared_graph.health_check()
+             if not healthy:
+                 raise RuntimeError("PostgreSQL graph health check returned False")
+             return True
+        except RuntimeError:
+             raise
+        except Exception as e:
+             raise RuntimeError(f"PostgreSQL graph liveness check failed: {e}")
     else:
         # Memory graph is always 'connected' if the object exists
         return True
@@ -266,12 +288,17 @@ async def initialize_graph(
     _snapshot_path = snapshot_path
     
     # Determine backend
-    backend = os.getenv("GRAPH_BACKEND", "memory").lower()
+    backend = os.getenv("GRAPH_BACKEND", "postgres").lower()
     _backend_type = backend
     
     if backend == "neo4j":
         # ── Neo4j lifecycle ──
-        from ..adapters.neo4j_graph import Neo4jKnowledgeGraph
+        try:
+            from ..adapters.neo4j_graph import Neo4jKnowledgeGraph
+        except ImportError:
+            logger.error("GRAPH_BACKEND=neo4j but neo4j adapter not installed — falling back to postgres")
+            backend = "postgres"
+            _backend_type = "postgres"
         
         uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         user = os.getenv("NEO4J_USER", "neo4j")
@@ -309,6 +336,46 @@ async def initialize_graph(
             logger.critical(f"Graph integrity check failed: {e}")
             await neo4j_graph.disconnect()
             raise RuntimeError(f"Could not verify graph connection: {e}")
+
+    elif backend == "postgres":
+        # ── PostgreSQL lifecycle ──
+        pg_graph = PostgresKnowledgeGraph(
+            PostgresConfig(
+                host=os.getenv("SUPABASE_DB_HOST", "localhost"),
+                port=int(os.getenv("SUPABASE_DB_PORT", "54322")),
+                database=os.getenv("SUPABASE_DB_NAME", "postgres"),
+                user=os.getenv("SUPABASE_DB_USER", "postgres"),
+                password=os.getenv("SUPABASE_DB_PASSWORD", "postgres"),
+            )
+        )
+        
+        # Retry loop for connection
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                await pg_graph.connect()
+                break
+            except Exception as e:
+                logger.warning(f"PostgreSQL graph connection attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1.0)
+        
+        _shared_graph = pg_graph
+        _shared_service = GraphService(_shared_graph)
+        
+        # Integrity check
+        try:
+            await check_graph_connection()
+            stats = await pg_graph.get_statistics()
+            logger.info(
+                f"PostgreSQL graph ready: {stats['total_nodes']} nodes, "
+                f"{stats['total_edges']} edges"
+            )
+        except Exception as e:
+            logger.critical(f"PostgreSQL graph integrity check failed: {e}")
+            await pg_graph.disconnect()
+            raise RuntimeError(f"Could not verify PostgreSQL graph connection: {e}")
             
     else:
         # ── Memory backend lifecycle ──
@@ -360,6 +427,8 @@ async def persist_graph(
     
     if _backend_type == "neo4j":
         return  # Neo4j handles its own persistence
+    if _backend_type == "postgres":
+        return  # PostgreSQL is durable by default
 
     path = snapshot_path or _snapshot_path or _DEFAULT_SNAPSHOT_PATH
     snapshot = await _shared_graph.export_snapshot()
@@ -386,6 +455,9 @@ async def shutdown_graph() -> None:
     if _backend_type == "neo4j" and _shared_graph is not None:
         await _shared_graph.disconnect()
         logger.info("Neo4j graph disconnected")
+    elif _backend_type == "postgres" and _shared_graph is not None:
+        await _shared_graph.disconnect()
+        logger.info("PostgreSQL graph disconnected")
     else:
         await persist_graph()
         logger.info("In-memory graph persisted on shutdown")

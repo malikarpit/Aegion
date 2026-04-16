@@ -543,8 +543,34 @@ class GraphRAGEngine:
         graph = self._get_graph(workspace_id)
         chunks = self._get_chunks(workspace_id)
 
+        # Hydrate from Supabase if in-memory graph is empty
         if not chunks:
-            return []
+            try:
+                from ..db.supabase_client import get_supabase_client
+                result = get_supabase_client().table("memories") \
+                    .select("*") \
+                    .eq("workspace_id", workspace_id) \
+                    .order("created_at", desc=True) \
+                    .limit(500) \
+                    .execute()
+                for row in (result.data or []):
+                    chunk = MemoryChunk(
+                        id=row.get("id", str(uuid.uuid4())),
+                        workspace_id=workspace_id,
+                        content=row.get("content", ""),
+                        memory_type=row.get("memory_type", "context"),
+                        tags=row.get("tags", []),
+                        metadata=row.get("metadata", {}),
+                    )
+                    chunks.append(chunk)
+                    # Re-extract entities for graph
+                    h_entities, h_rels = self._extractor.extract_heuristic(chunk.content, chunk.id)
+                    for entity in h_entities:
+                        graph.add_entity(entity)
+                if chunks:
+                    logger.info(f"Memory hydrated from DB: {len(chunks)} chunks for {workspace_id}")
+            except Exception as exc:
+                logger.warning(f"Memory hydration from DB failed (using in-memory only): {exc}")
 
         # Step 1: Extract entities from the query
         query_entities, _ = self._extractor.extract_heuristic(query, "_query")
