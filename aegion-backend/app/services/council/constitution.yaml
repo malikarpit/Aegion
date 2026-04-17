@@ -1,0 +1,195 @@
+# ==============================================================================
+# Aegion Constitutional AI Policy — Phase 102
+# ==============================================================================
+#
+# This file defines the governance constitution for the Aegion AI Council.
+# All council deliberations and sentinel checks are bound by these rules.
+#
+# To customize: copy this file to your workspace root as `.aegion/constitution.yaml`
+# The council engine will auto-detect and load workspace-specific constitutions.
+#
+# Schema version: 1.0
+# ==============================================================================
+
+schema_version: "1.0"
+
+# ────────────────────────────────────────────────────────────────────────────
+# Core Identity
+# ────────────────────────────────────────────────────────────────────────────
+identity:
+  name: "Aegion Council"
+  role: "Governed multi-model AI deliberation system"
+  mission: >
+    Make safe, cost-effective, and well-reasoned code decisions through
+    structured multi-model debate with human oversight for critical actions.
+
+# ────────────────────────────────────────────────────────────────────────────
+# Decision Tiers
+# ────────────────────────────────────────────────────────────────────────────
+decision_tiers:
+  T0:
+    name: "Autonomous"
+    description: "Safe, reversible changes with zero risk"
+    auto_approve: true
+    requires_human: false
+    debate_rounds: 1
+    examples:
+      - "Code formatting"
+      - "Comment additions"
+      - "Documentation updates"
+      - "Import reordering"
+
+  T1:
+    name: "Standard"
+    description: "Low-risk code changes within established patterns"
+    auto_approve: false
+    requires_human: false
+    debate_rounds: 1
+    examples:
+      - "Bug fixes matching known patterns"
+      - "Adding unit tests"
+      - "Refactoring within a single file"
+      - "Implementing well-defined interfaces"
+
+  T2:
+    name: "Important"
+    description: "Changes with moderate risk or cross-cutting impact"
+    auto_approve: false
+    requires_human: true
+    debate_rounds: 2
+    examples:
+      - "API endpoint changes"
+      - "Database schema modifications"
+      - "Authentication flow updates"
+      - "Multi-file refactoring"
+
+  T3:
+    name: "Critical"
+    description: "High-risk, hard-to-reverse architectural decisions"
+    auto_approve: false
+    requires_human: true
+    debate_rounds: 3
+    examples:
+      - "Security model changes"
+      - "Data migration scripts"
+      - "Third-party dependency additions"
+      - "Deployment configuration changes"
+
+# ────────────────────────────────────────────────────────────────────────────
+# Sentinel Rules — Hard safety constraints
+# ────────────────────────────────────────────────────────────────────────────
+sentinel:
+  # If any rule evaluates to true, the proposal is BLOCKED regardless of votes
+  hard_blocks:
+    - name: "no_credential_exposure"
+      description: "Never include secrets, API keys, or password literals in code"
+      pattern: "(password|secret|api_key|token)\\s*=\\s*['\"][^'\"]{8,}"
+      severity: "critical"
+
+    - name: "no_eval_exec"
+      description: "Never use eval(), exec(), or similar dynamic execution"
+      pattern: "\\b(eval|exec|compile)\\s*\\("
+      severity: "critical"
+
+    - name: "no_rm_rf"
+      description: "Never delete filesystem recursively without explicit confirmation"
+      pattern: "(shutil\\.rmtree|rm\\s+-rf|os\\.removedirs)"
+      severity: "critical"
+
+    - name: "no_disable_auth"
+      description: "Never bypass or disable authentication checks"
+      pattern: "(auth.*=.*False|skip_auth|disable_security|no_verify)"
+      severity: "high"
+
+  # Soft warnings — logged but don't block
+  warnings:
+    - name: "large_diff"
+      description: "Diffs over 500 lines should be split"
+      condition: "diff_lines > 500"
+
+    - name: "untested_code"
+      description: "New code files should have corresponding test files"
+      condition: "new_files_without_tests > 0"
+
+    - name: "dependency_addition"
+      description: "New dependencies require T2+ review"
+      condition: "new_dependencies > 0 AND tier < T2"
+
+# ────────────────────────────────────────────────────────────────────────────
+# Cost Governance
+# ────────────────────────────────────────────────────────────────────────────
+cost:
+  # Maximum daily LLM spend per workspace
+  daily_budget_usd: 10.00
+
+  # Per-request caps by operation type
+  per_request_caps:
+    ghost_text: 0.01        # Inline completions
+    child_council: 0.05     # Single-pass council
+    parent_council: 0.50    # Full debate
+    sentinel_check: 0.02    # Safety verification
+
+  # Cascade strategy: cheapest model first, escalate on low confidence
+  cascade:
+    confidence_threshold: 0.75  # Below this → escalate to next tier
+    max_escalations: 3          # Maximum cascade depth
+
+  # Cache settings
+  cache:
+    similarity_threshold: 0.92  # Semantic cache hit threshold
+    enabled: true
+
+# ────────────────────────────────────────────────────────────────────────────
+# Council Composition
+# ────────────────────────────────────────────────────────────────────────────
+council:
+  # Minimum members required for a valid vote
+  quorum: 2
+
+  # Consensus threshold (0.0–1.0)
+  consensus_threshold: 0.7
+
+  # Default roles in a council session
+  default_roles:
+    - role: "architect"
+      description: "Evaluates structural soundness, patterns, and scalability"
+      weight: 1.0
+
+    - role: "security_auditor"
+      description: "Checks for vulnerabilities, data exposure, and auth issues"
+      weight: 1.2  # Slightly higher weight for security
+
+    - role: "pragmatist"
+      description: "Considers implementation effort, maintenance cost, and pragmatic tradeoffs"
+      weight: 1.0
+
+    - role: "sentinel"
+      description: "Hard safety gate — can unilaterally block dangerous changes"
+      weight: 0.0  # Does not vote, only blocks
+      can_block: true
+
+# ────────────────────────────────────────────────────────────────────────────
+# Memory & Context
+# ────────────────────────────────────────────────────────────────────────────
+memory:
+  # How long to retain conversation context
+  session_context_window: 50  # messages
+
+  # Knowledge graph retention
+  graph:
+    auto_link_decisions: true   # Auto-link related decisions
+    prune_after_days: 90        # Prune stale nodes after 90 days
+
+  # Memory.md layered model
+  layers:
+    - name: "project"
+      description: "Project-wide conventions and architecture decisions"
+      file: "MEMORY.md"
+
+    - name: "workspace"
+      description: "Workspace-specific preferences and context"
+      file: ".aegion/memory.yaml"
+
+    - name: "session"
+      description: "Current session context (ephemeral)"
+      persistence: "in_memory"
