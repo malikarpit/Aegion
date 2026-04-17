@@ -2,14 +2,18 @@
 
 import { ReactNode } from "react";
 
-const variants = {
-  success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  warning: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  danger: "bg-red-500/10 text-red-400 border-red-500/20",
-  info: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  neutral: "bg-white/5 text-slate-400 border-white/10",
-  purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-} as const;
+/* ══════════════════════════════════════════════════════════════
+   BADGE — Design Token Variant System
+   ══════════════════════════════════════════════════════════════ */
+
+const variants: Record<string, React.CSSProperties> = {
+  success: { background: "hsla(150, 90%, 55%, 0.08)", color: "var(--status-success)", borderColor: "hsla(150, 90%, 55%, 0.20)" },
+  warning: { background: "hsla(42, 100%, 60%, 0.08)", color: "var(--status-warning)", borderColor: "hsla(42, 100%, 60%, 0.20)" },
+  danger:  { background: "hsla(350, 90%, 62%, 0.08)", color: "var(--status-error)", borderColor: "hsla(350, 90%, 62%, 0.20)" },
+  info:    { background: "hsla(260, 100%, 70%, 0.08)", color: "var(--status-info)", borderColor: "hsla(260, 100%, 70%, 0.20)" },
+  neutral: { background: "hsla(250, 10%, 80%, 0.05)", color: "var(--text-secondary)", borderColor: "var(--border-default)" },
+  purple:  { background: "hsla(280, 85%, 65%, 0.08)", color: "var(--accent-govern)", borderColor: "hsla(280, 85%, 65%, 0.20)" },
+};
 
 const sizes = {
   sm: "px-2 py-0.5 text-[10px]",
@@ -36,10 +40,8 @@ export function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`
-        inline-flex items-center gap-1.5 font-medium rounded-full border
-        ${variants[variant]} ${sizes[size]} ${className}
-      `}
+      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${sizes[size]} ${className}`}
+      style={variants[variant] || variants.neutral}
     >
       {dot && (
         <span className="relative flex h-1.5 w-1.5">

@@ -43,15 +43,15 @@ export function ProjectGraph() {
 
             // MOCK DATA START
             const mockNodes: Node[] = [
-                { id: '1', position: { x: 0, y: 0 }, data: { label: 'Project Start' }, type: 'input', style: { background: '#1e293b', color: '#fff', border: '1px solid #3b82f6' } },
-                { id: '2', position: { x: 0, y: 100 }, data: { label: 'Auth System Decision' }, style: { background: '#1e293b', color: '#fff', border: '1px solid #a855f7' } },
-                { id: '3', position: { x: -100, y: 200 }, data: { label: 'Firebase Impl' }, style: { background: '#0f172a', color: '#94a3b8', border: '1px solid #334155' } },
-                { id: '4', position: { x: 100, y: 200 }, data: { label: 'JWT Fallback' }, style: { background: '#0f172a', color: '#94a3b8', border: '1px solid #334155' } },
+                { id: '1', position: { x: 0, y: 0 }, data: { label: 'Project Start' }, type: 'input', style: { background: 'hsl(248, 15%, 12%)', color: 'hsl(260, 20%, 95%)', border: '1px solid hsl(260, 100%, 70%)' } },
+                { id: '2', position: { x: 0, y: 100 }, data: { label: 'Auth System Decision' }, style: { background: 'hsl(248, 15%, 12%)', color: 'hsl(260, 20%, 95%)', border: '1px solid hsl(280, 85%, 65%)' } },
+                { id: '3', position: { x: -100, y: 200 }, data: { label: 'Firebase Impl' }, style: { background: 'hsl(248, 18%, 7%)', color: 'hsl(250, 10%, 65%)', border: '1px solid hsl(248, 12%, 20%)' } },
+                { id: '4', position: { x: 100, y: 200 }, data: { label: 'JWT Fallback' }, style: { background: 'hsl(248, 18%, 7%)', color: 'hsl(250, 10%, 65%)', border: '1px solid hsl(248, 12%, 20%)' } },
             ];
             const mockEdges: Edge[] = [
-                { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#64748b' } },
-                { id: 'e2-3', source: '2', target: '3', style: { stroke: '#64748b' } },
-                { id: 'e2-4', source: '2', target: '4', style: { stroke: '#64748b' } },
+                { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: 'hsl(250, 10%, 40%)' } },
+                { id: 'e2-3', source: '2', target: '3', style: { stroke: 'hsl(250, 10%, 40%)' } },
+                { id: 'e2-4', source: '2', target: '4', style: { stroke: 'hsl(250, 10%, 40%)' } },
             ];
             // MOCK DATA END
 
@@ -70,14 +70,14 @@ export function ProjectGraph() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-full text-blue-400 animate-pulse">
+            <div className="flex items-center justify-center h-full animate-pulse" style={{ color: "var(--accent-reason)" }}>
                 Loading Neural Graph...
             </div>
         );
     }
 
     return (
-        <div className="w-full h-[600px] border border-white/10 rounded-xl bg-black/40 backdrop-blur-sm overflow-hidden shadow-2xl">
+        <div className="w-full h-[600px] rounded-xl backdrop-blur-sm overflow-hidden shadow-2xl" style={{ border: '1px solid var(--border-default)', background: 'hsla(248, 15%, 5%, 0.6)' }}>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -85,17 +85,17 @@ export function ProjectGraph() {
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 fitView
-                className="bg-black/90"
+                className="" style={{ background: 'hsl(248, 18%, 4%)' }}
             >
-                <Controls className="bg-white/10 border-white/10 text-white fill-white" />
+                <Controls className="" style={{ background: 'hsla(260, 20%, 80%, 0.08)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }} />
                 <MiniMap
-                    className="bg-black/80 border border-white/10"
+                    className="" style={{ background: 'hsl(248, 18%, 5%)', border: '1px solid var(--border-default)' }}
                     nodeColor={(n) => {
                         if (n.style?.background) return n.style.background as string;
                         return '#fff';
                     }}
                 />
-                <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#333" />
+                <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="hsl(248, 12%, 20%)" />
             </ReactFlow>
         </div>
     );
