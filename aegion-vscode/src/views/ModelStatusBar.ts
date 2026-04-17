@@ -12,7 +12,7 @@ export class ModelStatusBar {
     constructor(
         private context: vscode.ExtensionContext,
         private apiClient: AegionClient,
-        private sessionManager: SessionManager
+        private sessionManager: SessionManager,
     ) {
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
         this.statusBarItem.command = 'aegion.modelSettingsView.focus'; // Clicking it opens the settings webview
@@ -33,20 +33,20 @@ export class ModelStatusBar {
         try {
             const settings = await this.apiClient.get('/v1/model-settings/');
             const activePreset = settings.active_preset || 'balanced';
-            
+
             const presetIcons: Record<string, string> = {
                 'cost_saver': '🟢 Cost Saver',
                 'balanced': '🔵 Balanced',
                 'quality_first': '🟡 Quality First',
                 'no_limits': '🔴 No Limits',
                 'privacy_first': '🟣 Privacy First',
-                'custom': '⚙️ Custom'
+                'custom': '⚙️ Custom',
             };
 
             const label = presetIcons[activePreset] || activePreset;
-            
+
             this.statusBarItem.text = `$(hubot) ${label}`;
-            this.statusBarItem.tooltip = "Aegion Model Engine Profile (Click to configure)";
+            this.statusBarItem.tooltip = 'Aegion Model Engine Profile (Click to configure)';
             this.statusBarItem.show();
         } catch (error) {
             // Fails silently if backend isn't reachable
