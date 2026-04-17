@@ -110,6 +110,36 @@ class DriftDetector:
             attention_reason=attention_reason
         )
 
+    async def save_baseline(self, workspace_id: str, baseline_stats: Dict) -> None:
+        """Persist baseline statistics to kv_store for cross-session drift detection."""
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("kv_store").upsert({
+                "workspace_id": workspace_id,
+                "namespace": "drift_baselines",
+                "key": "latest",
+                "value": baseline_stats,
+            }, on_conflict="workspace_id,namespace,key").execute()
+        except Exception as exc:
+            logger.warning(f"Drift baseline persist failed: {exc}")
+
+    async def load_baseline(self, workspace_id: str) -> Optional[Dict]:
+        """Load previously saved baseline from kv_store."""
+        try:
+            from ...db.supabase_client import get_supabase_client
+            result = get_supabase_client().table("kv_store") \
+                .select("value") \
+                .eq("workspace_id", workspace_id) \
+                .eq("namespace", "drift_baselines") \
+                .eq("key", "latest") \
+                .maybe_single() \
+                .execute()
+            if result.data:
+                return result.data.get("value")
+        except Exception as exc:
+            logger.warning(f"Drift baseline load failed: {exc}")
+        return None
+
     # ========== Detection Methods ==========
 
     async def _detect_velocity_drift(

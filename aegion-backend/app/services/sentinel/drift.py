@@ -24,24 +24,55 @@ class DriftDetector:
         self.repo_path = repo_path
 
     def _run_git(self, args: List[str]) -> str:
-        """Run a git command in the repo."""
+        """Run a git command in the repo (W6.2: graceful fallback)."""
         try:
             result = subprocess.run(
                 ["git"] + args,
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=10,
             )
             return result.stdout.strip()
+        except FileNotFoundError:
+            logger.warning("Git binary not found — drift detection unavailable")
+            return ""
+        except subprocess.TimeoutExpired:
+            logger.warning("Git command timed out — drift detection degraded")
+            return ""
         except subprocess.CalledProcessError as e:
             logger.error(f"Git command failed: {e}")
             return ""
+        except OSError as e:
+            logger.warning(f"Git command OS error: {e}")
+            return ""
+
+    def _is_git_available(self) -> bool:
+        """Check if git is available and repo is valid (W6.2)."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=self.repo_path,
+                capture_output=True, text=True, timeout=5,
+            )
+            return result.returncode == 0
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return False
 
     def check_drift(self, active_session_files: List[str]) -> List[DriftAlert]:
         """
         Check for modified files that are NOT part of the active session context.
+
+        W6.2: Returns empty list with warning when git is unavailable
+        instead of crashing.
         """
+        if not self._is_git_available():
+            logger.warning(
+                "Drift detection skipped: git not available or not in a git repo"
+            )
+            return []
+
         # Get list of modified files (staged + unstaged)
         modified_files = []
         

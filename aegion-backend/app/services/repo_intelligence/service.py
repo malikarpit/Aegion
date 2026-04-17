@@ -307,12 +307,12 @@ def get_repo_service(event_store: Optional[EventStoreAdapter] = None, repository
     if _repo_service is None:
         if event_store is None:
             event_store = InMemoryEventStore()
-        # Ensure repository is provided
+        # Fallback to file-based repo if none provided
         if repository is None:
-            # Fallback to local file repo? Or Error?
-            # For backward compat, we can't easily fallback without settings.
-            # But get_repo_service is usually called from main.py where settings are available.
-            raise ValueError("repository must be provided to initialize RepoIntelligenceService")
+            from .repository import FileRepoIntelligenceRepository
+            import tempfile, os
+            data_dir = os.path.join(tempfile.gettempdir(), ".aegion", "intelligence")
+            repository = FileRepoIntelligenceRepository(data_dir)
             
         _repo_service = RepoIntelligenceService(event_store, repository, root_path)
     return _repo_service
