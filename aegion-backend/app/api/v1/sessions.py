@@ -146,9 +146,9 @@ async def start_session(
     
     # Hydrate session with governance context from knowledge graph
     from ...services.context_hydration import ContextHydrationService
-    from .analytics import _graph_service
+    from ...services.graph_provider import get_shared_graph_service
     
-    hydration = ContextHydrationService(graph_service=_graph_service)
+    hydration = ContextHydrationService(graph_service=get_shared_graph_service())
     initial_context = await hydration.hydrate_session_context(
         workspace_id=request.workspace_id,
         limit=10
@@ -185,7 +185,8 @@ async def get_session_status(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    from .analytics import _graph_service as graph_service
+    from ...services.graph_provider import get_shared_graph_service
+    graph_service = get_shared_graph_service()
     
     return SessionStatusResponse(
         session_id=session.session_id,
@@ -234,26 +235,26 @@ async def close_session(
     if request.distill:
         try:
             from ...services.chronos.artifacts import ChronosArtifacts
-            from ...adapters.firestore.artifact_log import FirestoreArtifactLog
-            from .analytics import _graph_service
+            from ...adapters.local_artifact_log import LocalArtifactLog
             from ...contracts.decision_intent import (
                 DecisionIntent, DecisionTier, ImpactLevel,
                 ReversibilityLevel, ReasoningPhase,
             )
-            # from ...contracts.evidence import Evidence # unused
+            from ...services.graph_provider import get_shared_graph_service
+            _graph_svc = get_shared_graph_service()
             
-            # TODO: Inject artifact log too! Currently still using FirestoreArtifactLog directly.
-            artifact_log = FirestoreArtifactLog()
+            artifact_log = LocalArtifactLog()
             chronos = ChronosArtifacts(storage_port=artifact_log)
             
             # ---------- Fetch real proposals for this session ----------
-            proposal_nodes = await _graph_service.list_proposals(
-                workspace_id=session_id,
+            # BUG FIX: use session.workspace_id, NOT session_id
+            proposal_nodes = await _graph_svc.list_proposals(
+                workspace_id=session.workspace_id,
                 limit=200
             )
             
             # ---------- Fetch real decisions for this workspace ----------
-            decision_nodes = await _graph_service.list_decisions(
+            decision_nodes = await _graph_svc.list_decisions(
                 workspace_id=session.workspace_id,
                 limit=200
             )
@@ -316,7 +317,7 @@ async def close_session(
             distilled = True
             
             # ---------- Create trace proposal linking artifact → session ----------
-            await _graph_service.record_proposal(
+            await _graph_svc.record_proposal(
                 proposal_id=f"trace-{artifact_id[:12]}",
                 creator_id="chronos",
                 title=f"Session Distillation: {session_id[:8]}",

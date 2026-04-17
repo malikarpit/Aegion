@@ -338,6 +338,7 @@ async def attest_skill(
     }
     
     skill.attestations.append(attestation)
+    await _skills_store.save(skill)
     return attestation
 
 

@@ -1,12 +1,12 @@
 """
 Aegion API v1 - Rejection Endpoints.
 
-Phase 3: The Cognitive Plane
+Phase 3: The Cognitive Plane + W1.4: Rejection Learning Integration
 API for managing and querying rejection artifacts.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 from ...services.chronos.rejections import get_rejection_service
@@ -35,6 +35,31 @@ class RecordRejectionRequest(BaseModel):
     session_id: Optional[str] = None
 
 
+class PenaltyResponse(BaseModel):
+    query: str
+    workspace_id: str
+    penalty: float
+    similar_rejections: int
+
+
+class TrendsResponse(BaseModel):
+    workspace_id: str
+    daily_counts: Dict[str, int]
+    top_reasons: List[Dict[str, Any]]
+    total_rejections: int
+
+
+# ========== Rejection Learner Helper ==========
+
+def _get_learner():
+    """Lazy import to avoid circular dependencies."""
+    try:
+        from ...services.rejection_learner import get_rejection_learner
+        return get_rejection_learner()
+    except Exception:
+        return None
+
+
 # ========== Endpoints ==========
 
 @router.post("/", response_model=RejectionArtifact)
@@ -46,6 +71,7 @@ async def record_rejection(
     Record a new rejection artifact.
     
     Called when a proposal is rejected to capture the learning.
+    Also feeds the RejectionLearner for confidence adjustment.
     """
     from ...services.archon import get_archon, GovernanceError
     archon = get_archon()
@@ -66,6 +92,18 @@ async def record_rejection(
         workspace_id=request.workspace_id,
         session_id=request.session_id
     )
+    
+    # W1.4: Feed the rejection learner (Christiano et al., 2017)
+    learner = _get_learner()
+    if learner:
+        try:
+            learner.record_rejection(
+                query=request.proposal_title,
+                reason=request.reason_detail,
+                workspace_id=request.workspace_id,
+            )
+        except Exception as exc:
+            logger.warning(f"Rejection learner feed failed (non-fatal): {exc}")
     
     return artifact
 
@@ -119,3 +157,61 @@ async def get_global_stats(
     """Get global rejection statistics."""
     service = get_rejection_service()
     return await service.get_stats()
+
+
+@router.get("/trends/{workspace_id}", response_model=TrendsResponse)
+async def get_rejection_trends(
+    workspace_id: str,
+    user: AuthorityContext = Depends(get_current_user)
+):
+    """
+    Get rejection trend analytics for a workspace (W1.4).
+    
+    Returns daily rejection counts and top rejection reasons
+    using the RejectionLearner (Christiano et al., 2017).
+    """
+    learner = _get_learner()
+    if not learner:
+        raise HTTPException(
+            status_code=503,
+            detail="Rejection learner not available"
+        )
+    trends = learner.get_trends(workspace_id)
+    return TrendsResponse(
+        workspace_id=workspace_id,
+        daily_counts=trends.get("daily_counts", {}),
+        top_reasons=trends.get("top_reasons", []),
+        total_rejections=trends.get("total_rejections", 0),
+    )
+
+
+@router.get("/penalty", response_model=PenaltyResponse)
+async def get_rejection_penalty(
+    query_text: str = Query(..., alias="query"),
+    workspace_id: str = Query(...),
+    user: AuthorityContext = Depends(get_current_user)
+):
+    """
+    Check how much confidence penalty a query would receive
+    based on historical rejection patterns (W1.4).
+    """
+    learner = _get_learner()
+    if not learner:
+        return PenaltyResponse(
+            query=query_text,
+            workspace_id=workspace_id,
+            penalty=0.0,
+            similar_rejections=0,
+        )
+    penalty = learner.get_penalty(query_text, workspace_id)
+    count = len([
+        r for r in learner._rejections
+        if r.get("workspace_id") == workspace_id
+    ])
+    return PenaltyResponse(
+        query=query_text,
+        workspace_id=workspace_id,
+        penalty=round(penalty, 4),
+        similar_rejections=count,
+    )
+
