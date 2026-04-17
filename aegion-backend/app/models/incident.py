@@ -47,6 +47,14 @@ class Incident(BaseModel):
     updated_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
 
+    # W5.3: Assignment & Lifecycle
+    assigned_to: Optional[str] = Field(default=None, description="User assigned to this incident")
+    status_history: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Audit trail of status changes: [{status, changed_by, timestamp, reason}]",
+    )
+
     # Context
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context (e.g. error logs, metrics)")
+

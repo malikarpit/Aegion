@@ -59,6 +59,10 @@ class Task(BaseModel):
     # Isolation
     worktree_path: Optional[str] = Field(None, description="Isolated git worktree path for this task")
 
+    # W4.2: Task Tree (parent-child hierarchy)
+    parent_task_id: Optional[str] = Field(None, description="Parent task ID for subtask hierarchy")
+    child_task_ids: List[str] = Field(default_factory=list, description="Child subtask IDs")
+
     # Timing
     created_at: datetime
     updated_at: datetime

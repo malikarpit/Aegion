@@ -81,6 +81,27 @@ class AuditChain:
             prev_hash=(prev_hash or "genesis")[:12],
         )
 
+        # ── Persist to Supabase audit_log (best-effort) ──
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("audit_log").insert({
+                "workspace_id": getattr(sealed, 'workspace_id', None),
+                "event_type": sealed.action.value if hasattr(sealed.action, 'value') else str(sealed.action),
+                "actor_id": sealed.actor_id,
+                "target_type": getattr(sealed, 'target_type', None),
+                "target_id": getattr(sealed, 'target_id', None),
+                "event_hash": event_hash,
+                "prev_hash": prev_hash,
+                "signature": signature,
+                "metadata": {
+                    "event_id": sealed.event_id,
+                    "justification": getattr(sealed, 'justification', None),
+                    "evidence_ids": getattr(sealed, 'evidence_ids', []),
+                },
+            }).execute()
+        except Exception as exc:
+            logger.warning(f"Audit log persist failed (non-fatal): {exc}")
+
         return sealed
 
     def verify_single(self, event: AuditEvent) -> bool:
