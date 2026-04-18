@@ -176,8 +176,18 @@ async def stream_council_response(
     service: CouncilService = Depends(get_council_service),
 ):
     """
-    Stream the AI Council response tokens (governed path).
+    Phase 97: Stream the AI Council debate as Server-Sent Events.
+
+    SSE Event types:
+      - debate.started   — Session created, debate beginning
+      - debate.round     — New debate round starting (for multi-round T2/T3)
+      - debate.opinion   — Individual council member opinion received
+      - debate.consensus — Consensus calculated
+      - debate.complete  — Full session result with synthesis
+      - debate.error     — Error during debate
     """
+    import json as _json
+
     archon = get_archon()
     try:
         archon.guard_writable()
@@ -185,21 +195,81 @@ async def stream_council_response(
         raise HTTPException(status_code=403, detail=str(e))
 
     proposal = _build_decision_intent(request, user)
+    workspace_id = getattr(user, 'workspace_id', 'default')
 
-    async def generate():
+    async def sse_generate():
         try:
-            # Convene session and stream the summary
+            # Emit debate start
+            yield _sse_event("debate.started", {
+                "proposal_id": proposal.intent_id,
+                "tier": proposal.calculated_tier.value,
+                "title": proposal.title[:120],
+                "num_rounds": service.ROUNDS_BY_TIER.get(
+                    proposal.calculated_tier, 1
+                ),
+            })
+
+            # Run the full debate
             session = await service.convene_session(
                 proposal=proposal,
-                workspace_id=getattr(user, 'workspace_id', 'default'),
+                workspace_id=workspace_id,
             )
-            summary = session.summary if hasattr(session, 'summary') else str(session)
-            for chunk in [summary[i:i+50] for i in range(0, len(summary), 50)]:
-                yield chunk
-        except Exception as e:
-            yield f"[ERROR] Council session failed: {e}"
 
-    return StreamingResponse(generate(), media_type="text/plain")
+            # Emit each opinion individually so the UI can render them progressively
+            for i, opinion in enumerate(session.opinions):
+                yield _sse_event("debate.opinion", {
+                    "index": i,
+                    "member_id": opinion.member_id,
+                    "vote": opinion.vote.value if hasattr(opinion.vote, 'value') else str(opinion.vote),
+                    "confidence": opinion.confidence,
+                    "analysis": opinion.analysis[:500],
+                    "stage": opinion.metadata.get("stage", "child_debate"),
+                })
+
+            # Emit consensus
+            yield _sse_event("debate.consensus", {
+                "consensus": session.consensus.value if session.consensus else "none",
+                "confidence": session.consensus_confidence,
+                "dissent_count": session.dissent_count,
+            })
+
+            # Emit complete result
+            yield _sse_event("debate.complete", {
+                "session_id": session.session_id,
+                "status": session.status,
+                "synthesis": session.synthesis or "",
+                "total_tokens": session.total_tokens,
+            })
+
+        except GovernanceError as e:
+            yield _sse_event("debate.error", {
+                "error": str(e),
+                "type": "governance",
+                "sentinel_blocked": True,
+            })
+        except Exception as e:
+            logger.error(f"Council SSE stream failed: {e}")
+            yield _sse_event("debate.error", {
+                "error": str(e),
+                "type": "internal",
+                "sentinel_blocked": False,
+            })
+
+    return StreamingResponse(
+        sse_generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+def _sse_event(event_type: str, data: dict) -> str:
+    """Format a dict as a standard SSE event string."""
+    import json as _json
+    return f"event: {event_type}\ndata: {_json.dumps(data)}\n\n"
 
 
 @router.get("/policy")
@@ -347,7 +417,10 @@ class ACKPersonaRequest(BaseModel):
     persona_keys: List[str] = ["security_auditor", "cost_analyst", "devils_advocate"]
 
 
-def _ack_engine():
+def _ack_engine(request: Request = None):
+    """Get the ACK engine — prefer app.state (properly initialized at startup)."""
+    if request and hasattr(request.app.state, 'council_engine') and request.app.state.council_engine:
+        return request.app.state.council_engine
     from ...services.council_kernel.engine import get_council_engine
     return get_council_engine()
 
@@ -360,6 +433,7 @@ def _ack_supabase():
 @router.post("/consult", summary="ACK — Full multi-model council consultation")
 async def ack_consult(
     req: ACKConsultRequest,
+    request: Request = None,
     user: AuthorityContext = Depends(get_current_user),
 ):
     """
@@ -393,8 +467,17 @@ async def ack_consult(
         compressed = await get_compressor().compress(query)
         query = compressed["text"]
 
-    engine = _ack_engine()
+    engine = _ack_engine(request)
     result = await engine.consult(workspace_id, query, council_type, context)
+
+    # Persist result for audit trail (best-effort)
+    try:
+        from ...adapters.postgres.council_store import get_council_result_store
+        store = get_council_result_store()
+        await store.save_result(workspace_id, result.model_dump())
+    except Exception as exc:
+        logger.debug(f"Council result persistence skipped: {exc}")
+
     return result.model_dump()
 
 
@@ -503,3 +586,137 @@ async def ack_invalidate_cache(
     workspace_id = getattr(user, "workspace_id", "global")
     count = await get_semantic_cache().invalidate(workspace_id, pattern)
     return {"invalidated": count, "pattern": pattern}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# W2.3: Decision Lineage Tracking
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/lineage/{decision_id}", summary="W2.3 — Decision lineage chain")
+async def get_decision_lineage(
+    decision_id: str,
+    depth: int = 10,
+    user: AuthorityContext = Depends(get_current_user),
+):
+    """
+    Retrieve the lineage chain for a decision (W2.3).
+
+    Walks parent→child relationships to build a provenance trail.
+    Returns the chain in chronological order (root → current).
+    """
+    workspace_id = getattr(user, "workspace_id", "global")
+    chain = []
+
+    try:
+        from ...db.supabase_client import get_supabase_client
+        client = get_supabase_client()
+
+        current_id = decision_id
+        visited = set()
+
+        for _ in range(depth):
+            if current_id in visited:
+                break  # Prevent cycles
+            visited.add(current_id)
+
+            result = client.table("decisions").select("*").eq(
+                "id", current_id
+            ).execute()
+
+            if not result.data:
+                break
+
+            record = result.data[0]
+            chain.append({
+                "decision_id": record.get("id", current_id),
+                "title": record.get("title", ""),
+                "status": record.get("status", ""),
+                "tier": record.get("tier", "T0"),
+                "created_at": record.get("created_at", ""),
+                "parent_id": record.get("parent_decision_id"),
+                "workspace_id": record.get("workspace_id", workspace_id),
+            })
+
+            parent = record.get("parent_decision_id")
+            if not parent:
+                break
+            current_id = parent
+
+    except Exception as exc:
+        logger.debug(f"Decision lineage query failed (non-fatal): {exc}")
+        # Fall back to returning just the requested ID
+        chain = [{"decision_id": decision_id, "error": str(exc)}]
+
+    # Reverse so root is first
+    chain.reverse()
+
+    return {
+        "decision_id": decision_id,
+        "lineage_depth": len(chain),
+        "chain": chain,
+    }
+
+
+@router.get("/decisions/recent", summary="W2.3 — Recent decisions with lineage")
+async def get_recent_decisions(
+    limit: int = 20,
+    user: AuthorityContext = Depends(get_current_user),
+):
+    """
+    List recent decisions for the workspace with parent lineage references (W2.3).
+    """
+    workspace_id = getattr(user, "workspace_id", "global")
+    try:
+        from ...db.supabase_client import get_supabase_client
+        result = (
+            get_supabase_client()
+            .table("decisions")
+            .select("id,title,status,tier,created_at,parent_decision_id,workspace_id")
+            .eq("workspace_id", workspace_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return {"workspace_id": workspace_id, "decisions": result.data or []}
+    except Exception as exc:
+        logger.debug(f"Recent decisions query failed: {exc}")
+        return {"workspace_id": workspace_id, "decisions": [], "error": str(exc)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# W1.6 / F6: Temporal Changes Query
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/temporal/changes", summary="W1.6 — Decisions changed since timestamp")
+async def get_temporal_changes(
+    since: str,
+    limit: int = 50,
+    user: AuthorityContext = Depends(get_current_user),
+):
+    """
+    Query what decisions changed since a given timestamp (blueprint 1.6).
+
+    Args:
+        since: ISO timestamp (e.g. '2026-04-01T00:00:00Z').
+        limit: Maximum results (default 50).
+    """
+    workspace_id = getattr(user, "workspace_id", "global")
+    try:
+        from ...services.council_kernel.temporal_memory import query_changes_since
+        changes = await query_changes_since(workspace_id, since, limit)
+        return {
+            "workspace_id": workspace_id,
+            "since": since,
+            "count": len(changes),
+            "changes": changes,
+        }
+    except Exception as exc:
+        logger.debug(f"Temporal changes query failed: {exc}")
+        return {
+            "workspace_id": workspace_id,
+            "since": since,
+            "count": 0,
+            "changes": [],
+            "error": str(exc),
+        }
+

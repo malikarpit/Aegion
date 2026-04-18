@@ -78,10 +78,10 @@ async def generate_ghost_text(
     )
 
     return GhostTextSuggestion(
-        text=result.get("completion", ""),
-        confidence=result.get("confidence", 0.0),
-        reasoning=f"Model: {result.get('model', 'unknown')}",
-        model=result.get("model"),
-        cost_usd=result.get("cost_usd", 0.0),
-        latency_ms=result.get("latency_ms", 0),
+        text=result.text,
+        confidence=result.confidence,
+        reasoning=f"Model: {result.model}",
+        model=result.model,
+        cost_usd=result.cost_usd,
+        latency_ms=result.latency_ms,
     )
