@@ -79,10 +79,10 @@ class PostgresKVStore:
 
     async def delete(self, key: str, workspace_id: str = "default") -> bool:
         """Delete a key-value pair."""
-        self._client.table("kv_store").delete().eq(
+        result = self._client.table("kv_store").delete().eq(
             "workspace_id", workspace_id
         ).eq("namespace", self.namespace).eq("key", key).execute()
-        return True
+        return bool(result.data)
 
     async def list_keys(self, workspace_id: str = "default") -> List[str]:
         """List all keys for a workspace/namespace."""
@@ -122,6 +122,13 @@ class PostgresModelStore(PostgresKVStore):
 
     async def save(self, item: T, workspace_id: str = "default") -> T:
         """Save a Pydantic model instance."""
+        # Guard: catch the common arg-swap mistake (save(workspace_id, model))
+        if isinstance(item, str):
+            raise TypeError(
+                f"PostgresModelStore.save() expected a Pydantic model as 'item', "
+                f"got str: '{item[:80]}'. Did you swap the arguments? "
+                f"Correct usage: save(model_instance, workspace_id)"
+            )
         # Infer workspace_id from item if present
         if hasattr(item, "workspace_id") and getattr(item, "workspace_id"):
             workspace_id = str(getattr(item, "workspace_id"))

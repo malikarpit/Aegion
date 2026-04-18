@@ -91,3 +91,65 @@ class CostSummary(BaseModel):
     cost_by_provider: Dict[str, float] = Field(default_factory=dict)
     cost_by_purpose: Dict[str, float] = Field(default_factory=dict)
     estimated_savings_usd: float = 0.0  # How much was saved by cascade + cache vs always-frontier
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Engine health (circuit breaker aggregation)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class EngineHealth(str, Enum):
+    """
+    Aggregate health status for the entire council engine.
+
+    Derived from individual provider circuit breaker states:
+        OPERATIONAL  — all providers healthy (all circuits CLOSED, no recent failures)
+        DEGRADED     — some providers failing or in HALF_OPEN
+        CRITICAL     — majority of providers OPEN
+        UNAVAILABLE  — all providers OPEN, no requests can be served
+    """
+    OPERATIONAL = "operational"
+    DEGRADED = "degraded"
+    CRITICAL = "critical"
+    UNAVAILABLE = "unavailable"
+
+
+class EngineStatus(BaseModel):
+    """
+    Full engine health report returned by GET /health/engine.
+
+    Includes provider-level health + aggregate statistics for monitoring
+    dashboards and the Cognitive Sidebar OS system state strip.
+    """
+    health: EngineHealth
+    active_providers: int = 0       # Providers not in OPEN state
+    total_providers: int = 0        # Total known providers
+    provider_health: Dict[str, Any] = Field(default_factory=dict)
+    cache_entries: int = 0          # In-process cache size
+    uptime_s: float = 0.0           # Engine uptime
+    total_consultations: int = 0    # Total consult() calls since startup
+    total_errors: int = 0           # Total errors since startup
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Argument Mining — Stab & Gurevych, 2017
+# ──────────────────────────────────────────────────────────────────────────────
+
+class ArgumentNode(BaseModel):
+    """
+    Structured debate output node — Argument Mining.
+
+    Reference: Stab & Gurevych, 2017 — "Parsing Argumentation Structures
+               in Persuasive Essays"
+
+    Each node represents one agent's contribution in a debate round,
+    decomposed into claim + evidence + relational links to other arguments.
+    """
+    id: str                                     # Unique node ID (e.g., "arg-001")
+    agent: str                                  # Model/provider that produced this
+    claim: str                                  # The main claim or position
+    evidence: List[str] = Field(default_factory=list)    # Supporting evidence
+    rebuts: List[str] = Field(default_factory=list)      # IDs of arguments this rebuts
+    supports: List[str] = Field(default_factory=list)    # IDs of arguments this supports
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    round: int = 1                              # Debate round number
+

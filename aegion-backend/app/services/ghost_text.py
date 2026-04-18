@@ -223,7 +223,14 @@ class GhostTextEngine:
             prefix, suffix, language, file_path, import_header, mode,
         )
 
-        # ── 6. Query cascade ──
+        # ── 6. Phase 96: Ollama local fast-path (zero-cost, low-latency) ──
+        ollama_result = await self._try_ollama_fast_path(
+            prompt, language, mode, cache_key, workspace_id, prefix, suffix, start,
+        )
+        if ollama_result is not None:
+            return ollama_result
+
+        # ── 7. Query remote cascade (fallback) ──
         try:
             from .council_kernel.engine import get_council_engine
 
@@ -238,7 +245,7 @@ class GhostTextEngine:
                 max_budget_usd=0.01,  # Hard cap: $0.01 per completion
             )
 
-            # ── 7. Post-process ──
+            # ── 8. Post-process ──
             completion = self._post_process(response.response, language, mode)
             latency = int((time.monotonic() - start) * 1000)
 
@@ -246,7 +253,7 @@ class GhostTextEngine:
                 self._metrics.record("empty_response")
                 return GhostTextResult.empty("empty_response")
 
-            # ── 8. Cache + cost tracking ──
+            # ── 9. Cache + cost tracking ──
             self._local_cache_put(cache_key, completion)
             await self._store_pgvector_cache(workspace_id, prefix, suffix, completion)
             await self._track_cost(
@@ -287,6 +294,101 @@ class GhostTextEngine:
     def get_metrics(self) -> Dict[str, int]:
         """Return completion metrics for observability."""
         return self._metrics.to_dict()
+
+    # ──────────────────────────────────────────────
+    # Phase 96: Ollama Local Fast-Path
+    # ──────────────────────────────────────────────
+
+    _ollama_available: Optional[bool] = None  # Cached probe result
+    _OLLAMA_URL = "http://localhost:11434"
+    _OLLAMA_MODEL = "codellama:7b"  # Small, fast FIM model
+    _OLLAMA_TIMEOUT = 3.0  # Don't block longer than this
+
+    async def _try_ollama_fast_path(
+        self,
+        prompt: str,
+        language: str,
+        mode: CompletionMode,
+        cache_key: str,
+        workspace_id: str,
+        prefix: str,
+        suffix: str,
+        start_time: float,
+    ) -> Optional[GhostTextResult]:
+        """
+        Attempt a local Ollama completion. Returns None if Ollama is unavailable.
+        Zero-cost, low-latency (~150ms vs ~800ms cloud).
+        """
+        # One-time probe: is Ollama running?
+        if self._ollama_available is False:
+            return None
+
+        try:
+            import httpx
+        except ImportError:
+            self.__class__._ollama_available = False
+            return None
+
+        if self._ollama_available is None:
+            try:
+                async with httpx.AsyncClient(timeout=1.0) as client:
+                    resp = await client.get(f"{self._OLLAMA_URL}/api/version")
+                    self.__class__._ollama_available = resp.status_code == 200
+                    if self._ollama_available:
+                        logger.info("Phase 96: Ollama local fast-path enabled")
+                    else:
+                        return None
+            except Exception:
+                self.__class__._ollama_available = False
+                return None
+
+        try:
+            async with httpx.AsyncClient(timeout=self._OLLAMA_TIMEOUT) as client:
+                resp = await client.post(
+                    f"{self._OLLAMA_URL}/api/generate",
+                    json={
+                        "model": self._OLLAMA_MODEL,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "num_predict": 256,
+                            "temperature": 0.2,
+                            "stop": _STOP_SEQUENCES.get(language, _STOP_SEQUENCES["default"]),
+                        },
+                    },
+                )
+                if resp.status_code != 200:
+                    return None
+
+                data = resp.json()
+                raw = data.get("response", "")
+                completion = self._post_process(raw, language, mode)
+
+                if not completion.strip():
+                    return None
+
+                latency = int((time.monotonic() - start_time) * 1000)
+
+                # Cache it
+                self._local_cache_put(cache_key, completion)
+                await self._store_pgvector_cache(workspace_id, prefix, suffix, completion)
+
+                self._metrics.record("success")
+                return GhostTextResult(
+                    text=completion,
+                    model=self._OLLAMA_MODEL,
+                    provider="ollama",
+                    source="ollama_local",
+                    cost_usd=0.0,
+                    confidence=0.75,  # Local models get moderate confidence
+                    latency_ms=latency,
+                    tokens_used=data.get("eval_count", 0),
+                    mode=mode,
+                )
+
+        except Exception as exc:
+            logger.debug(f"Ollama fast-path failed, falling back to cascade: {exc}")
+            return None
 
     # ──────────────────────────────────────────────
     # Mode detection
