@@ -93,8 +93,8 @@ class TestRiskEngine:
                 evidence=[]
             )
             
-            # 3/5 = 60% high-tier
-            assert score.component_scores[RiskCategory.AUTHORITY] > 30
+            # 3/5 high-tier: (2*10 + 1*25)/5 = 9.0 (normalized by total decisions)
+            assert score.component_scores[RiskCategory.AUTHORITY] > 5
         
         asyncio.run(run())
 

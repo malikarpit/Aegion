@@ -71,13 +71,23 @@ async def test_scanner_traversal():
 
 @pytest.mark.asyncio
 async def test_service_full_scan():
+    # Reset singleton
+    import app.services.repo_intelligence.service as _svc
+    _svc._repo_service = None
+
     store = InMemoryEventStore()
-    service = get_repo_service(store)
+    from tests.helpers.in_memory_repo import InMemoryRepoRepository
+    repo = InMemoryRepoRepository()
+    service = get_repo_service(store, repository=repo)
     
     # Start scan
     scan_id = await service.start_scan("test_ws")
     
-    # Verify scan completed (since we await it in V1)
+    # Wait for background scan to complete
+    import asyncio
+    await asyncio.sleep(3.0)
+    
+    # Verify scan completed (since it runs as background task)
     scan = await service.get_scan_status(scan_id)
     assert scan.status == "completed"
     assert scan.files_scanned > 0

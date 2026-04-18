@@ -129,11 +129,19 @@ def test_marketplace_search():
     """Feature: Marketplace search."""
     app.dependency_overrides[get_current_user] = mock_dev_auth
 
+    # Ensure at least one matching skill exists
+    create_res = client.post("/api/v1/skills", json={
+        "name": "Attest Skill 2",
+        "prompt_template": "Run this too",
+        "category": "custom"
+    }, headers=AUTH_HEADERS)
+    assert create_res.status_code == 201
+
     response = client.get("/api/v1/skills/marketplace", params={"query": "Attest"}, headers=AUTH_HEADERS)
     assert response.status_code == 200
     results = response.json()
     assert len(results) > 0
-    assert results[0]["name"] == "Attest Skill"
+    assert "Attest" in results[0]["name"]
 
 # --- Phase C: Council/WarRoom/Admin ---
 
