@@ -33,6 +33,16 @@ class SessionManager:
         self._session_store = PostgresModelStore("sessions", Session, "session_id")
         self._ownership_store = PostgresModelStore("ownership", SessionOwnership, "session_id")
 
+    def _validate_keys(self, workspace_id: str, session_id: str) -> None:
+        """Preflight assertion: workspace_id must not collide with session_id."""
+        if not workspace_id:
+            raise ValueError("workspace_id is required for session operations")
+        if workspace_id == session_id:
+            raise ValueError(
+                f"workspace_id ({workspace_id}) must not equal session_id — "
+                f"key collision risk. Use the actual workspace ID."
+            )
+
     async def create_session(self, workspace_id: str, owner_id: str) -> Session:
         """Create a new collaboration session."""
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
@@ -56,8 +66,8 @@ class SessionManager:
             updated_at=now
         )
         
-        await self._session_store.save(session.workspace_id, session)
-        await self._ownership_store.save(session.workspace_id, ownership)
+        await self._session_store.save(session, session.workspace_id)
+        await self._ownership_store.save(ownership, session.workspace_id)
         
         logger.info(f"Session created: {session_id}", owner=owner_id)
         
@@ -77,12 +87,13 @@ class SessionManager:
     async def get_ownership(self, session_id: str, workspace_id: str = "global") -> Optional[SessionOwnership]:
         return await self._ownership_store.load(workspace_id, session_id)
 
-    async def claim_ownership(self, session_id: str, user_id: str, force: bool = False) -> SessionOwnership:
+    async def claim_ownership(self, session_id: str, user_id: str, workspace_id: str = "global", force: bool = False) -> SessionOwnership:
         """
         Claim ownership of a session.
         fails if already owned by someone else (unless force=True).
         """
-        ownership = await self._ownership_store.load(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        ownership = await self._ownership_store.load(workspace_id, session_id)
         if not ownership:
              raise ValueError(f"Session {session_id} not found")
              
@@ -120,15 +131,16 @@ class SessionManager:
         ownership.status = OwnershipStatus.CLAIMED
         ownership.updated_at = now
         
-        await self._ownership_store.save(ownership.workspace_id, ownership)
+        await self._ownership_store.save(ownership, ownership.workspace_id)
         logger.info(f"Ownership claimed: {session_id} by {user_id}")
         return ownership
 
-    async def transfer_ownership(self, session_id: str, current_owner_id: str, target_user_id: str) -> SessionOwnership:
+    async def transfer_ownership(self, session_id: str, current_owner_id: str, target_user_id: str, workspace_id: str = "global") -> SessionOwnership:
         """
         Initiate transfer of ownership to another user.
         """
-        ownership = await self._ownership_store.load(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        ownership = await self._ownership_store.load(workspace_id, session_id)
         if not ownership:
              raise ValueError(f"Session {session_id} not found")
              
@@ -139,15 +151,16 @@ class SessionManager:
         ownership.pending_transfer_to = target_user_id
         ownership.updated_at = datetime.now(timezone.utc)
         
-        await self._ownership_store.save(ownership.workspace_id, ownership)
+        await self._ownership_store.save(ownership, ownership.workspace_id)
         logger.info(f"Ownership transfer initiated: {session_id} from {current_owner_id} to {target_user_id}")
         return ownership
 
-    async def release_ownership(self, session_id: str, user_id: str) -> SessionOwnership:
+    async def release_ownership(self, session_id: str, user_id: str, workspace_id: str = "global") -> SessionOwnership:
         """
         Release ownership, making the session free to claim.
         """
-        ownership = await self._ownership_store.load(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        ownership = await self._ownership_store.load(workspace_id, session_id)
         if not ownership:
              raise ValueError(f"Session {session_id} not found")
         
@@ -158,15 +171,16 @@ class SessionManager:
         ownership.owner_id = None
         ownership.updated_at = datetime.now(timezone.utc)
         
-        await self._ownership_store.save(ownership.workspace_id, ownership)
+        await self._ownership_store.save(ownership, ownership.workspace_id)
         logger.info(f"Ownership released: {session_id} by {user_id}")
         return ownership
 
-    async def check_write_permission(self, session_id: str, user_id: str) -> bool:
+    async def check_write_permission(self, session_id: str, user_id: str, workspace_id: str = "global") -> bool:
         """
         Check if user has write permission (is owner).
         """
-        ownership = await self._ownership_store.load(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        ownership = await self._ownership_store.load(workspace_id, session_id)
         if not ownership:
             return False
             
@@ -176,9 +190,10 @@ class SessionManager:
     # Phase 7: Session Lifecycle Extensions
     # ────────────────────────────────────────────────────────
 
-    async def add_artifact(self, session_id: str, artifact: dict) -> dict:
+    async def add_artifact(self, session_id: str, artifact: dict, workspace_id: str = "global") -> dict:
         """Add an artifact to the session's metadata."""
-        session = await self.get_session(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        session = await self.get_session(session_id, workspace_id)
         if not session:
             raise ResourceNotFoundError(f"Session {session_id} not found")
         
@@ -187,12 +202,13 @@ class SessionManager:
         artifacts.append(artifact_entry)
         session.metadata["artifacts"] = artifacts
         
-        await self._session_store.save(session.workspace_id, session)
+        await self._session_store.save(session, session.workspace_id)
         return artifact_entry
 
-    async def create_checkpoint(self, session_id: str, label: str, state: dict, git_ref: Optional[str] = None) -> dict:
+    async def create_checkpoint(self, session_id: str, label: str, state: dict, workspace_id: str = "global", git_ref: Optional[str] = None) -> dict:
         """Create a recoverable state checkpoint."""
-        session = await self.get_session(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        session = await self.get_session(session_id, workspace_id)
         if not session:
             raise ResourceNotFoundError(f"Session {session_id} not found")
             
@@ -216,15 +232,16 @@ class SessionManager:
         )
         return result.data[0]
 
-    async def close_session(self, session_id: str) -> Session:
+    async def close_session(self, session_id: str, workspace_id: str = "global") -> Session:
         """Mark a session as closed and ready for distillation."""
-        session = await self.get_session(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        session = await self.get_session(session_id, workspace_id)
         if not session:
             raise ResourceNotFoundError(f"Session {session_id} not found")
             
         session.status = SessionStatus.CLOSED
         session.closed_at = datetime.now(timezone.utc)
-        await self._session_store.save(session.workspace_id, session)
+        await self._session_store.save(session, session.workspace_id)
         
         logger.info(f"Session closed: {session_id}")
         
@@ -239,9 +256,10 @@ class SessionManager:
         )
         return session
 
-    async def recover_session(self, session_id: str, checkpoint_id: Optional[str] = None) -> Session:
+    async def recover_session(self, session_id: str, workspace_id: str = "global", checkpoint_id: Optional[str] = None) -> Session:
         """Recover an active session, optionally from a specific checkpoint."""
-        session = await self.get_session(session_id, session_id)
+        self._validate_keys(workspace_id, session_id)
+        session = await self.get_session(session_id, workspace_id)
         if not session:
             raise ResourceNotFoundError(f"Session {session_id} not found")
             
@@ -255,7 +273,7 @@ class SessionManager:
         
         session.status = SessionStatus.ACTIVE
         session.metadata["recovered_state"] = state
-        await self._session_store.save(session.workspace_id, session)
+        await self._session_store.save(session, session.workspace_id)
         
         from .audit_store import get_audit_store, AuditAction
         get_audit_store().record(

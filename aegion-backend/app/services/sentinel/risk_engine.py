@@ -290,7 +290,7 @@ class RiskEngine:
         # Recommendations
         recommendations = self._generate_recommendations(component_scores, contributing_factors, signals)
 
-        return RiskScore(
+        risk_result = RiskScore(
             entity_id=workspace_id,
             entity_type="workspace",
             overall_score=overall_score,
@@ -301,6 +301,28 @@ class RiskEngine:
             valid_until=datetime.now(timezone.utc) + timedelta(hours=1),
             recommendations=recommendations,
         )
+
+        # ── Persist to Supabase risk_signals table (best-effort) ──
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("risk_signals").insert({
+                "workspace_id": workspace_id,
+                "signal_type": "composite_risk",
+                "severity": overall_level.value if hasattr(overall_level, 'value') else str(overall_level),
+                "score": round(overall_score, 2),
+                "source": "risk_engine.calculate_risk_score",
+                "metadata": {
+                    "component_scores": {k: v for k, v in component_scores.items()},
+                    "contributing_factors": contributing_factors[:10],
+                    "recommendations": recommendations[:5],
+                    "signal_count": len(signals),
+                    "changed_files_count": len(changed_files),
+                },
+            }).execute()
+        except Exception as exc:
+            logger.warning(f"Risk signal persist failed (non-fatal): {exc}")
+
+        return risk_result
 
     def classify_tier(self, score: float) -> str:
         """Classify a risk score into Archon governance tiers."""

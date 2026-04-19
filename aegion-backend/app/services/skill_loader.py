@@ -146,6 +146,76 @@ class SkillLoader:
         logger.info(f"Loaded {len(skills)} skills from {skills_dir}")
         return skills
 
+    async def invoke_skill(
+        self,
+        skill: Dict[str, Any],
+        params: Dict[str, Any],
+        workspace_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Execute a loaded skill blueprint (W4.1).
+
+        Steps:
+          1. Renders the skill's prompt_template with provided params.
+          2. Sends the rendered prompt to the council engine.
+          3. Returns the council result enriched with skill metadata.
+
+        Args:
+            skill: A skill blueprint dict (from load_skill).
+            params: Parameter values to substitute into the template.
+            workspace_id: Workspace context.
+
+        Returns:
+            Dict with keys: result, skill_name, skill_id, cost_usd, tokens
+        """
+        template = skill.get("prompt_template", "")
+        if not template:
+            raise ValueError(f"Skill '{skill.get('name', 'unknown')}' has no prompt template")
+
+        # Render template — support both {{ var }} and {var} syntax
+        rendered = template
+        for key, value in params.items():
+            rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+            rendered = rendered.replace(f"{{{{ {key} }}}}", str(value))
+
+        # Python .format() fallback for {key} syntax
+        try:
+            rendered = rendered.format(**{k: str(v) for k, v in params.items()})
+        except (KeyError, IndexError):
+            pass  # Template has other braces — ignore
+
+        # Send to council
+        try:
+            from .council_kernel.engine import get_council_engine
+
+            engine = get_council_engine()
+            result = await engine.consult(
+                workspace_id=workspace_id,
+                query=rendered,
+            )
+
+            return {
+                "result": result.synthesis if result else "",
+                "skill_name": skill.get("name", "unknown"),
+                "skill_id": skill.get("skill_id", ""),
+                "rendered_prompt": rendered[:500],
+                "cost_usd": getattr(result, "total_cost_usd", 0.0),
+                "tokens": getattr(result, "total_tokens", 0),
+                "consensus_score": getattr(result, "consensus_score", 0.0),
+            }
+        except Exception as exc:
+            logger.error(f"Skill invocation failed for '{skill.get('name')}': {exc}")
+            return {
+                "result": f"Skill invocation failed: {exc}",
+                "skill_name": skill.get("name", "unknown"),
+                "skill_id": skill.get("skill_id", ""),
+                "rendered_prompt": rendered[:500],
+                "cost_usd": 0.0,
+                "tokens": 0,
+                "consensus_score": 0.0,
+                "error": str(exc),
+            }
+
 
 # Singleton
 _loader: Optional[SkillLoader] = None
