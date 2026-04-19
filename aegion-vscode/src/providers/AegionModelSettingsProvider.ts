@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { AegionClient } from '../client/AegionClient';
-import { SessionManager } from '../auth/SessionManager';
+import { AegionClient } from '../api/client';
+import { SessionManager } from '../session/manager';
 
 /**
  * Phase 86 Enhanced: VS Code Webview Provider for Model Settings & Cost Analytics.
@@ -20,18 +20,18 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private readonly client: AegionClient,
-        private readonly sessionManager: SessionManager
+        private readonly sessionManager: SessionManager,
     ) {}
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
+        _context: vscode.WebviewViewResolveContext,
+        _token: vscode.CancellationToken,
     ) {
         this._view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [this._extensionUri],
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -62,7 +62,7 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
     }
 
     public async loadData() {
-        if (!this._view) return;
+        if (!this._view) { return; }
 
         try {
             const workspaceId = this.sessionManager.getActiveWorkspaceId();
@@ -72,9 +72,9 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
             }
 
             const [settings, budget, presets] = await Promise.all([
-                this.client.get(`/v1/model-settings/`),
-                this.client.get(`/v1/model-settings/budget`),
-                this.client.get(`/v1/model-settings/presets`)
+                this.client.get('/v1/model-settings/'),
+                this.client.get('/v1/model-settings/budget'),
+                this.client.get('/v1/model-settings/presets'),
             ]);
 
             this._view.webview.postMessage({
@@ -84,50 +84,50 @@ export class AegionModelSettingsProvider implements vscode.WebviewViewProvider {
                     budget: budget,
                     presets: presets?.built_in || presets || [],
                     settings: settings,
-                }
+                },
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             this._view.webview.postMessage({
                 type: 'error',
-                message: error?.message || 'Failed to load model settings'
+                message: (error as Error)?.message || 'Failed to load model settings',
             });
         }
     }
 
     private async applyPreset(presetKey: string) {
         try {
-            await this.client.post(`/v1/model-settings/preset`, { preset: presetKey });
+            await this.client.post('/v1/model-settings/preset', { preset: presetKey });
             vscode.window.showInformationMessage(`Aegion: Applied '${presetKey}' model profile`);
             await this.loadData();
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Failed to apply profile: ${error?.message}`);
+        } catch (error: unknown) {
+            vscode.window.showErrorMessage(`Failed to apply profile: ${(error as Error)?.message}`);
         }
     }
 
-    private async updateSetting(path: string, value: any) {
+    private async updateSetting(path: string, value: unknown) {
         try {
-            await this.client.patch(`/v1/model-settings/setting`, { path, value });
+            await this.client.patch('/v1/model-settings/setting', { path, value });
             vscode.window.showInformationMessage(`Aegion: Updated ${path}`);
             await this.loadData();
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Failed to update setting: ${error?.message}`);
+        } catch (error: unknown) {
+            vscode.window.showErrorMessage(`Failed to update setting: ${(error as Error)?.message}`);
         }
     }
 
     private async exportSettings() {
         try {
-            const settings = await this.client.get(`/v1/model-settings/`);
+            const settings = await this.client.get('/v1/model-settings/');
             const doc = await vscode.workspace.openTextDocument({
                 content: JSON.stringify(settings, null, 2),
                 language: 'json',
             });
             vscode.window.showTextDocument(doc);
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Export failed: ${error?.message}`);
+        } catch (error: unknown) {
+            vscode.window.showErrorMessage(`Export failed: ${(error as Error)?.message}`);
         }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview): string {
+    private _getHtmlForWebview(_webview: vscode.Webview): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>

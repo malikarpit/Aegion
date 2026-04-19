@@ -70,7 +70,7 @@ export class GhostTextService implements vscode.InlineCompletionItemProvider {
     constructor(private sessionManager: SessionManager) {
         // Read debounce from settings
         const config = vscode.workspace.getConfiguration('aegion');
-        this.DEBOUNCE_MS = config.get<number>('ghostText.debounceMs') || 400;
+        this.DEBOUNCE_MS = config.get<number>('ghostText.debounceMs') || 600;
 
         // Completion confidence status bar
         this.statusBarItem = vscode.window.createStatusBarItem(
@@ -296,6 +296,7 @@ export class GhostTextService implements vscode.InlineCompletionItemProvider {
         }
 
         this.statusBarItem.text = `${icon} Ghost: ${confPercent}%`;
+        this.statusBarItem.color = color;
         this.statusBarItem.tooltip = [
             'Aegion Ghost Text',
             `Confidence: ${confPercent}%`,
@@ -323,7 +324,7 @@ export class GhostTextService implements vscode.InlineCompletionItemProvider {
     // Telemetry
     // ──────────────────────────────────────────────
 
-    trackAccepted(confidence: number | string, language: string, costUsd?: number): void {
+    trackAccepted(confidence: number | string, language: string, _costUsd?: number): void {
         this.acceptCount++;
         const acceptRate = this.acceptCount / Math.max(this.acceptCount + this.rejectCount, 1);
 
@@ -365,7 +366,7 @@ export class GhostTextService implements vscode.InlineCompletionItemProvider {
         const rate = total > 0 ? ((this.acceptCount / total) * 100).toFixed(1) : '0.0';
 
         vscode.window.showInformationMessage(
-            `Aegion Ghost Text Stats\n` +
+            'Aegion Ghost Text Stats\n' +
             `  Completions: ${this.sessionCompletions}\n` +
             `  Accepted: ${this.acceptCount} / Rejected: ${this.rejectCount}\n` +
             `  Accept Rate: ${rate}%\n` +

@@ -45,6 +45,10 @@ export class SessionManager {
         return { ...this.state };
     }
 
+    public getActiveWorkspaceId(): string {
+        return this.state.workspaceId;
+    }
+
     public async startSession(): Promise<void> {
         if (this.state.status === 'active') {
             const choice = await vscode.window.showWarningMessage(
