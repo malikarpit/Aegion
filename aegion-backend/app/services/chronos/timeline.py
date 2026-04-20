@@ -149,6 +149,27 @@ class ArchitectureTimelineService:
         await self.event_store.append(event)
         ChronosMetrics.event_appended("adr.created", workspace_id)
         await self._apply_event(event) # Write-through
+
+        # ── Persist to Supabase adrs table for dashboard queries ──
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("adrs").insert({
+                "workspace_id": workspace_id,
+                "adr_id": adr_id,
+                "title": title,
+                "context": context,
+                "decision": decision,
+                "rationale": rationale,
+                "status": ADRStatus.PROPOSED.value,
+                "created_by": created_by,
+                "metadata": {
+                    "drivers": [d.model_dump() for d in drivers] if drivers else [],
+                    "supersedes": supersedes,
+                    "version": 1,
+                },
+            }).execute()
+        except Exception as exc:
+            logger.warning(f"ADR persist to adrs table failed (non-fatal): {exc}")
         
         return self._adrs[adr_id]
 

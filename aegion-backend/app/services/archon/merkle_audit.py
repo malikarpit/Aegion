@@ -152,6 +152,11 @@ class MerkleAuditTree:
                 sibling_hash = layer[sibling_index]
                 position = "left" if is_right else "right"
                 path.append(MerkleProofStep(hash=sibling_hash, position=position))
+            else:
+                # Odd-length level: last node was duplicated during tree build.
+                # Mirror that by using the node itself as its right sibling.
+                sibling_hash = layer[index]
+                path.append(MerkleProofStep(hash=sibling_hash, position="right"))
 
             index //= 2
 
@@ -217,6 +222,22 @@ class MerkleAuditTree:
                 f"type={anchor_type}"
             ),
         )
+
+        # ── Persist anchor to Supabase audit_log ──
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("audit_log").insert({
+                "event_type": "MERKLE_ROOT_ANCHORED",
+                "actor_id": "merkle_audit_tree",
+                "event_hash": anchor.root_hash,
+                "metadata": {
+                    "tree_size": anchor.tree_size,
+                    "anchor_type": anchor_type,
+                    "anchor_ref": anchor_ref,
+                },
+            }).execute()
+        except Exception as exc:
+            logger.warning(f"Merkle anchor persist failed (non-fatal): {exc}")
 
         return anchor
 
