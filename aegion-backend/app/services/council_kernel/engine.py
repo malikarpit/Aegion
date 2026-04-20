@@ -38,8 +38,22 @@ from typing import Any, Dict, List, Optional
 
 from ...core.logging import logger
 from .cascade import LLMCascade
+from .circuit_breaker import (
+    CircuitBreakerRegistry,
+    CircuitState,
+    ErrorCategory,
+    classify_error,
+    get_circuit_breaker_registry,
+)
 from .model_router import ModelRouter, MODEL_CATALOG
-from .types import CouncilProfile, CouncilResult, CouncilType, ModelResponse
+from .types import (
+    CouncilProfile,
+    CouncilResult,
+    CouncilType,
+    EngineHealth,
+    EngineStatus,
+    ModelResponse,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -84,16 +98,65 @@ class CouncilEngine:
         result = await engine.consult(workspace_id, query, CouncilType.CHILD)
     """
 
+    # Default timeout for individual provider calls (seconds).
+    # Each model call is wrapped in asyncio.wait_for with this limit.
+    DEFAULT_TIMEOUT_S: float = 30.0
+
     def __init__(self) -> None:
         self.model_router = ModelRouter()
         self.cascade = LLMCascade(self.model_router)
         self._cache = _InProcessCache()
+        self._breakers = get_circuit_breaker_registry()
+        self._start_time = time.monotonic()
+        self._total_consultations: int = 0
+        self._total_errors: int = 0
 
     async def configure(self, user_api_keys: Dict[str, Any]) -> None:
         """Configure LLM providers from user-supplied keys (call at startup or on key update)."""
         await self.model_router.configure_from_user_keys(user_api_keys)
         logger.info(
             f"CouncilEngine configured with providers: {list(self.model_router.providers.keys())}"
+        )
+
+    # ──────────────────────────────────────────────
+    # Health & Status
+    # ──────────────────────────────────────────────
+
+    def get_health(self) -> EngineStatus:
+        """
+        Compute aggregate engine health from individual provider circuit breakers.
+
+        Health rules:
+            OPERATIONAL  — all providers healthy (CLOSED, no recent failures)
+            DEGRADED     — at least one provider unhealthy but majority OK
+            CRITICAL     — majority of providers OPEN
+            UNAVAILABLE  — all providers OPEN
+
+        Exposed via GET /health/engine for monitoring and Cognitive Sidebar OS.
+        """
+        provider_health = self._breakers.get_all_health()
+        total = len(provider_health) or 1
+        unavailable = len(self._breakers.get_unavailable_providers())
+        active = total - unavailable
+
+        if unavailable == 0:
+            health = EngineHealth.OPERATIONAL
+        elif unavailable == total:
+            health = EngineHealth.UNAVAILABLE
+        elif unavailable > total / 2:
+            health = EngineHealth.CRITICAL
+        else:
+            health = EngineHealth.DEGRADED
+
+        return EngineStatus(
+            health=health,
+            active_providers=active,
+            total_providers=total,
+            provider_health=provider_health,
+            cache_entries=len(self._cache._store),
+            uptime_s=round(time.monotonic() - self._start_time, 1),
+            total_consultations=self._total_consultations,
+            total_errors=self._total_errors,
         )
 
     # ──────────────────────────────────────────────
@@ -131,6 +194,7 @@ class CouncilEngine:
         All advanced features gated by WorkspaceCouncilConfig.
         """
         start_ms = int(time.monotonic() * 1000)
+        self._total_consultations += 1
         context = context or {}
         context["_is_sub_council"] = is_sub_council
         config = self._get_config(workspace_id)
@@ -139,14 +203,25 @@ class CouncilEngine:
         if config.constitution_enforcement:
             try:
                 from .constitution import get_constitution
-                violations = get_constitution().check_query(query)
+                constitution = get_constitution()
+                violations = constitution.check_query(query)
                 if violations and config.constitution_block_on_violation:
-                    logger.warning(f"Constitutional BLOCK: {violations}")
+                    # Generate structured explanations for the block
+                    explanations = constitution.explain_violations(query, violations)
+                    explanation_text = "\n".join(
+                        f"• {e['description']}\n"
+                        f"  WHY: {e['why']}\n"
+                        f"  EVIDENCE: {e['evidence']}\n"
+                        f"  FIX: {e['remediation']}"
+                        for e in explanations
+                    ) if explanations else "; ".join(violations)
+
+                    logger.warning(f"Constitutional BLOCK: {[e.get('rule') for e in explanations]}")
                     return CouncilResult(
                         council_type=council_type,
                         profile=CouncilProfile.TRIVIAL,
                         query=query,
-                        synthesis="⛔ BLOCKED BY CONSTITUTIONAL AI: " + "; ".join(violations),
+                        synthesis=f"⛔ BLOCKED BY CONSTITUTIONAL AI\n\n{explanation_text}",
                         individual_responses=[],
                         consensus_score=0.0,
                         dissenting_views=[],
@@ -216,8 +291,10 @@ class CouncilEngine:
                         f"Context pruned: {pruned['compressed_turns']} turns compressed, "
                         f"~{pruned['saved_tokens']} tokens saved"
                     )
+            except ImportError as exc:
+                logger.error(f"Context pruner module not available: {exc}")
             except Exception as exc:
-                logger.warning(f"Context pruning failed (non-fatal): {exc}")
+                logger.error(f"Context pruning failed: {exc}", exc_info=True)
 
         # Step 1 — Check pgvector semantic cache first, fallback to in-process
         cached = await self._check_semantic_cache(workspace_id, query)
@@ -281,11 +358,8 @@ class CouncilEngine:
         elif council_type == CouncilType.DISTILLATION:
             result = await self._distillation_council(workspace_id, query, profile, context, start_ms, config)
         elif council_type == CouncilType.PARENT:
-            # E5: Route to DAG pipeline if enabled, else sequential
-            if config.dag_pipeline_enabled:
-                result = await self._dag_parent_council(workspace_id, query, profile, context, start_ms, config)
-            else:
-                result = await self._parent_council(workspace_id, query, profile, context, start_ms, config)
+            # DAG pipeline deprecated (W1.1) — always use sequential parent council
+            result = await self._parent_council(workspace_id, query, profile, context, start_ms, config)
         elif council_type == CouncilType.SENTINEL:
             result = await self._sentinel_council(workspace_id, query, profile, context, start_ms, config)
         else:
@@ -1106,14 +1180,49 @@ class CouncilEngine:
         budget_kwargs = {k: v for k, v in budget_kwargs.items() if v is not None}
 
         async def _safe_call(provider_name: str, model: str) -> Optional[ModelResponse]:
-            try:
-                return await self.model_router.call(
-                    provider_name, model, query,
-                    system_prompt=system_prompt,
-                    **budget_kwargs,
+            # ── Circuit Breaker Gate ──
+            # Skip provider if its circuit is OPEN (fail-fast).
+            if not await self._breakers.can_execute(provider_name):
+                logger.info(
+                    f"Circuit OPEN for '{provider_name}' — skipping {model}"
                 )
+                return None
+
+            try:
+                # ── Timeout Enforcement ──
+                # Each provider call is wrapped in asyncio.wait_for.
+                # Prevents a single slow provider from blocking the pipeline.
+                result = await asyncio.wait_for(
+                    self.model_router.call(
+                        provider_name, model, query,
+                        system_prompt=system_prompt,
+                        **budget_kwargs,
+                    ),
+                    timeout=self.DEFAULT_TIMEOUT_S,
+                )
+                await self._breakers.record_success(provider_name)
+                return result
+
+            except asyncio.TimeoutError:
+                # Timeout is a transient failure — trips breaker
+                error_msg = f"Provider '{provider_name}/{model}' timed out after {self.DEFAULT_TIMEOUT_S}s"
+                logger.warning(error_msg)
+                await self._breakers.record_failure(
+                    provider_name, error_msg, ErrorCategory.TRANSIENT,
+                )
+                self._total_errors += 1
+                return None
+
             except Exception as exc:
-                logger.warning(f"Provider '{provider_name}/{model}' failed: {exc}")
+                # Classify the error to determine if it should trip the breaker
+                category = classify_error(exc)
+                logger.warning(
+                    f"Provider '{provider_name}/{model}' failed ({category.value}): {exc}"
+                )
+                await self._breakers.record_failure(
+                    provider_name, str(exc), category,
+                )
+                self._total_errors += 1
                 return None
 
         results = await asyncio.gather(*[_safe_call(p, m) for p, m in model_slots])
@@ -1127,19 +1236,35 @@ class CouncilEngine:
         responses: List[ModelResponse],
         start_ms: int,
     ) -> CouncilResult:
-        """Aggregate individual model responses into a CouncilResult."""
+        """
+        Aggregate individual model responses into a CouncilResult.
+
+        Uses BFT consensus (>2/3 agreement via semantic Jaccard similarity)
+        to determine the majority position instead of simply picking the
+        highest-confidence response.
+
+        Reference: Castro & Liskov (1999), "Practical Byzantine Fault Tolerance"
+        """
         if not responses:
             raise RuntimeError("Council returned zero successful responses.")
 
-        # Consensus: ratio of high-confidence responses
-        high_conf = [r for r in responses if r.confidence >= 0.70]
-        consensus_score = len(high_conf) / len(responses)
-
-        # Dissenting views: responses below 0.50 confidence
-        dissenting = [r.response[:500] for r in responses if r.confidence < 0.50]
-
-        # Best synthesis: highest-confidence response
-        best = max(responses, key=lambda r: r.confidence)
+        # Build consensus input
+        from .consensus import BFTConsensus
+        consensus_engine = BFTConsensus(
+            agreement_threshold=0.35,
+            quorum_fraction=0.67,
+        )
+        consensus_input = [
+            {
+                "text": r.response,
+                "model": r.model,
+                "provider": r.provider,
+                "confidence": r.confidence,
+                "tier": r.tier,
+            }
+            for r in responses
+        ]
+        consensus = consensus_engine.evaluate(consensus_input)
 
         total_latency = int(time.monotonic() * 1000) - start_ms
         total_cost = sum(r.cost_usd for r in responses)
@@ -1154,10 +1279,10 @@ class CouncilEngine:
             council_type=council_type,
             profile=profile,
             query=query,
-            synthesis=best.response,
+            synthesis=consensus.majority_position,
             individual_responses=responses,
-            consensus_score=round(consensus_score, 3),
-            dissenting_views=dissenting,
+            consensus_score=round(consensus.quorum_score, 3),
+            dissenting_views=consensus.dissenting_views,
             total_cost_usd=round(total_cost, 6),
             total_tokens=sum(r.tokens_in + r.tokens_out for r in responses),
             total_latency_ms=total_latency,
@@ -1301,8 +1426,12 @@ class CouncilEngine:
                 "cost_usd": result.total_cost_usd,
                 "cache_hit": result.cache_hit,
             }).execute()
+        except ImportError:
+            # Expected when running locally without Supabase — not an error
+            logger.debug("Cost tracking skipped: Supabase client not available (local mode)")
         except Exception as exc:
-            logger.warning(f"Cost tracking failed (non-fatal): {exc}")
+            # Real DB failure — log at ERROR so it appears in monitoring
+            logger.error(f"Cost tracking DB insert failed: {exc}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

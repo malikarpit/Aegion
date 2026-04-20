@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .model_router import ModelRouter
 from .types import ModelResponse
+from ...core.logging import logger
 
 
 MAX_ROUNDS = 4  # Increased from 3: allows more time for genuine convergence
@@ -223,6 +224,9 @@ class DebateEngine:
         # Determine final position
         final = self._determine_final_position(history, fresh_eyes_result)
 
+        # W1.3: Convert raw argument graph to typed ArgumentNode objects (Stab & Gurevych, 2017)
+        typed_argument_nodes = self._build_typed_argument_nodes(history, argument_graph)
+
         return {
             "proposition": proposition,
             "rounds": len(history),
@@ -232,6 +236,7 @@ class DebateEngine:
             "final_position": final,
             "fresh_eyes": fresh_eyes_result,
             "argument_graph": argument_graph,
+            "argument_nodes": typed_argument_nodes,
             "prompt_variant_id": prompt_variant_id,
             "total_cost_usd": round(total_cost, 6),
         }
@@ -451,3 +456,82 @@ class DebateEngine:
             )
         except Exception:
             pass
+
+    @staticmethod
+    def _build_typed_argument_nodes(
+        history: List[List[Dict]], argument_graph: List[Dict],
+    ) -> List[Dict]:
+        """
+        W1.3: Convert debate history into structured ArgumentNode objects.
+
+        Reference: Stab & Gurevych, 2017 — "Parsing Argumentation Structures
+                   in Persuasive Essays"
+
+        Extracts:
+          - claim: first sentence of the model's position
+          - evidence: any sentences containing data/numbers/quotes
+          - rebuts/supports: derived from argument_graph edges
+        """
+        from .types import ArgumentNode
+
+        nodes: List[ArgumentNode] = []
+        node_id_map: Dict[Tuple[str, int], str] = {}  # (model, round) → node_id
+
+        # Build nodes from history
+        for round_idx, round_responses in enumerate(history):
+            round_num = round_idx + 1
+            for resp in round_responses:
+                model = resp.get("model", "unknown")
+                position = resp.get("position", "")
+                confidence = resp.get("confidence", 0.5)
+
+                # Extract claim (first sentence) and evidence
+                sentences = [s.strip() for s in position.split(".") if s.strip()]
+                claim = sentences[0] + "." if sentences else position[:200]
+                evidence = [
+                    s + "." for s in sentences[1:]
+                    if any(ind in s.lower() for ind in [
+                        "because", "evidence", "data", "benchmark",
+                        "study", "research", "%", "according",
+                    ])
+                ]
+
+                node_id = f"arg-{round_num}-{model}"
+                node_id_map[(model, round_num)] = node_id
+
+                nodes.append(ArgumentNode(
+                    id=node_id,
+                    agent=model,
+                    claim=claim,
+                    evidence=evidence,
+                    confidence=min(1.0, max(0.0, confidence)),
+                    round=round_num,
+                ))
+
+        # Wire rebuts/supports from argument_graph
+        for edge in argument_graph:
+            from_model = edge.get("from_model", "")
+            to_model = edge.get("to_model", "")
+            round_num = edge.get("round", 1)
+            resp_type = edge.get("response_type", "unknown")
+
+            from_id = node_id_map.get((from_model, round_num), "")
+            # Previous round
+            to_id = node_id_map.get((to_model, round_num - 1), "")
+
+            if not from_id or not to_id:
+                continue
+
+            # Find the from_node and add relationships
+            for node in nodes:
+                if node.id == from_id:
+                    if resp_type in ("rebuttal", "counter", "disagree"):
+                        node.rebuts.append(to_id)
+                    elif resp_type in ("support", "agree", "extend"):
+                        node.supports.append(to_id)
+                    else:
+                        # Default: if different position → rebuttal, same → support
+                        node.supports.append(to_id)
+                    break
+
+        return [n.model_dump() for n in nodes]

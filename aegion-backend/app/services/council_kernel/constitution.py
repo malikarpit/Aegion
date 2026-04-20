@@ -135,18 +135,28 @@ class ConstitutionalAI:
     """
     Guards council operations against constitutional violations.
 
+    Supports three rule sources (checked in priority order):
+        1. Workspace-specific overrides from Supabase (highest priority)
+        2. Global rules from Supabase
+        3. Default hardcoded rules (fallback when DB unavailable)
+
+    All blocking decisions include structured explanations so the user
+    understands WHY their query was blocked and HOW to remediate.
+
     Usage:
         constitution = ConstitutionalAI()
         violations = constitution.check_query(user_query)
         if violations:
-            raise GovernanceError(f"Constitutional violations: {violations}")
+            explanations = constitution.explain_violations(user_query, violations)
+            raise GovernanceError(f"Constitutional violations: {explanations}")
     """
 
-    def __init__(self, constitution_path: Optional[str] = None) -> None:
+    def __init__(self, constitution_path: Optional[str] = None, workspace_id: Optional[str] = None) -> None:
+        self.workspace_id = workspace_id
         if constitution_path and os.path.exists(constitution_path):
             self.rules = self._load(constitution_path)
         else:
-            self.rules = _DEFAULT_CONSTITUTION
+            self.rules = self._load_from_db_or_default(workspace_id=workspace_id)
 
     def _load(self, path: str) -> Dict[str, Any]:
         try:
@@ -155,6 +165,77 @@ class ConstitutionalAI:
         except Exception as exc:
             logger.warning(f"Failed to load constitution from {path}: {exc}")
             return _DEFAULT_CONSTITUTION
+
+    def _load_from_db_or_default(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Attempt to load constitutional rules from Supabase.
+
+        Falls back to _DEFAULT_CONSTITUTION if DB is unavailable.
+        This enables runtime rule management via admin API without
+        requiring a code deploy.
+
+        W2.1: Supports workspace-scoped rules — loads global rules plus
+        workspace-specific overrides when workspace_id is provided.
+        """
+        try:
+            from ...db.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            # Load global rules (workspace_id IS NULL) + workspace-specific rules
+            query = client.table("constitutional_rules").select("*")
+            if workspace_id:
+                query = query.or_(f"workspace_id.is.null,workspace_id.eq.{workspace_id}")
+            result = query.execute()
+            if result.data:
+                return self._db_rows_to_constitution(result.data)
+        except ImportError:
+            logger.debug("Constitution: Supabase not available, using defaults")
+        except Exception as exc:
+            logger.debug(f"Constitution: DB load failed ({exc}), using defaults")
+
+        return _DEFAULT_CONSTITUTION
+
+    @staticmethod
+    def _db_rows_to_constitution(rows: List[Dict]) -> Dict[str, Any]:
+        """
+        Convert flat DB rows to the nested constitution format.
+
+        DB schema: constitutional_rules(
+            id, rule_type, rule_id, description,
+            severity, enabled, workspace_id,
+            metadata_json, created_at, updated_at
+        )
+        """
+        hard = []
+        soft = []
+        escalation = []
+
+        for row in rows:
+            if not row.get("enabled", True):
+                continue
+
+            rule_type = row.get("rule_type", "hard")
+            entry = {
+                "rule": row.get("rule_id", ""),
+                "description": row.get("description", ""),
+            }
+
+            if rule_type == "hard":
+                hard.append(entry)
+            elif rule_type == "soft":
+                soft.append(entry)
+            elif rule_type == "escalation":
+                meta = row.get("metadata_json", {}) or {}
+                escalation.append({
+                    "condition": meta.get("condition", ""),
+                    "action": meta.get("action", ""),
+                })
+
+        return {
+            "version": "2.0.0-db",
+            "hard_constraints": hard or _DEFAULT_CONSTITUTION["hard_constraints"],
+            "soft_guidelines": soft or _DEFAULT_CONSTITUTION["soft_guidelines"],
+            "escalation_triggers": escalation or _DEFAULT_CONSTITUTION["escalation_triggers"],
+        }
 
     # ══════════════════════════════════════════════
     # E1: Full constraint checks on queries
@@ -166,6 +247,8 @@ class ConstitutionalAI:
 
         Returns list of violation descriptions (empty = OK).
         All 7 hard constraints now have runtime detectors.
+
+        W2.1: Each violation now includes the rule_id for traceability.
         """
         violations = []
         query_lower = query.lower()
@@ -175,7 +258,7 @@ class ConstitutionalAI:
             keywords = _QUERY_DETECTORS.get(rule, [])
 
             if any(kw in query_lower for kw in keywords):
-                violations.append(f"BLOCKED: {constraint['description']}")
+                violations.append(f"BLOCKED [{rule}]: {constraint['description']}")
 
         return violations
 
@@ -211,6 +294,94 @@ class ConstitutionalAI:
                     violations.append(f"REDACTED: {constraint['description']}")
 
         return violations
+
+    # ══════════════════════════════════════════════
+    # Explain-Why: Structured Violation Explanations
+    # ══════════════════════════════════════════════
+
+    # Human-readable explanations for each hard constraint
+    _RULE_EXPLANATIONS: Dict[str, Dict[str, str]] = {
+        "no_ai_memory_write": {
+            "why": "Direct AI writes to the Chronos timeline could corrupt the historical "
+                   "decision record. All memory writes must go through the audited pipeline.",
+            "remediation": "Use the Chronos API through the governance layer instead of "
+                          "requesting direct writes.",
+        },
+        "no_ai_approval": {
+            "why": "Tier 2+ decisions require human judgement. Autonomous AI approval "
+                   "would bypass the accountability chain required by governance policy.",
+            "remediation": "Submit the decision for human review via the approval workflow.",
+        },
+        "human_override": {
+            "why": "Human authority is the highest-priority governance principle. "
+                   "AI must always defer to explicit human decisions.",
+            "remediation": "Rephrase your request to work with human decisions, not against them.",
+        },
+        "no_data_deletion": {
+            "why": "Production data deletion is irreversible and could cause data loss. "
+                   "Even backups may not be sufficient for full recovery.",
+            "remediation": "Use soft-delete (archive) operations or request a supervised "
+                          "deletion through the admin interface.",
+        },
+        "no_secret_exposure": {
+            "why": "API keys, tokens, and credentials in responses could be stored in "
+                   "logs, caches, or conversation history, leading to credential leaks.",
+            "remediation": "Reference secrets by name (e.g., 'OPENAI_KEY') rather than "
+                          "requesting their actual values.",
+        },
+        "no_governance_bypass": {
+            "why": "Governance checks (Archon, Sentinel, Constitution) are safety-critical. "
+                   "Disabling them removes the safety net for all subsequent operations.",
+            "remediation": "If you need to adjust governance behavior, use the admin settings "
+                          "to modify thresholds, not disable checks entirely.",
+        },
+        "audit_trail_always": {
+            "why": "The audit trail provides accountability, debugging, and compliance evidence. "
+                   "Gaps in logging make incident investigation impossible.",
+            "remediation": "All actions are logged by design. If you need reduced logging "
+                          "verbosity, adjust the log level in settings.",
+        },
+    }
+
+    def explain_violations(
+        self,
+        query: str,
+        violations: List[str],
+    ) -> List[Dict[str, str]]:
+        """
+        Generate structured, human-readable explanations for each violation.
+
+        Returns a list of dicts with keys:
+            - rule: The constitutional rule ID
+            - description: Short description of the rule
+            - why: WHY this rule exists
+            - evidence: WHAT in the query triggered the block
+            - remediation: HOW the user can rephrase/fix their query
+        """
+        explanations = []
+        query_lower = query.lower()
+
+        for violation_str in violations:
+            # Extract rule info from the violation string
+            for constraint in self.rules.get("hard_constraints", []):
+                if constraint["description"] in violation_str:
+                    rule_id = constraint["rule"]
+                    rule_info = self._RULE_EXPLANATIONS.get(rule_id, {})
+
+                    # Find which keyword triggered it
+                    keywords = _QUERY_DETECTORS.get(rule_id, [])
+                    triggered_by = [kw for kw in keywords if kw in query_lower]
+
+                    explanations.append({
+                        "rule": rule_id,
+                        "description": constraint["description"],
+                        "why": rule_info.get("why", "This rule protects system integrity."),
+                        "evidence": f"Triggered by: {', '.join(triggered_by)}" if triggered_by else "Pattern match detected",
+                        "remediation": rule_info.get("remediation", "Please rephrase your request."),
+                    })
+                    break
+
+        return explanations
 
     # ══════════════════════════════════════════════
     # E3: Escalation trigger evaluation
@@ -310,6 +481,18 @@ class ConstitutionalAI:
     def get_escalation_triggers(self) -> List[Dict[str, str]]:
         """Return configured escalation triggers."""
         return self.rules.get("escalation_triggers", [])
+
+    def reload_from_db(self) -> bool:
+        """
+        Hot-reload rules from DB without restarting the engine.
+
+        Returns True if DB rules were loaded, False if fell back to defaults.
+        """
+        new_rules = self._load_from_db_or_default()
+        is_db = new_rules.get("version", "").endswith("-db")
+        self.rules = new_rules
+        logger.info(f"Constitution reloaded (source={'db' if is_db else 'defaults'})")
+        return is_db
 
 
 # Singleton
