@@ -44,39 +44,57 @@ export default function SignupPage() {
     const displayError = localError || error;
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden">
+        <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "var(--surface-0)" }}>
             {/* Background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-900/15 rounded-full blur-[150px] animate-pulse" />
-                <div className="absolute bottom-[-20%] left-[-10%] w-[40%] h-[40%] bg-blue-900/15 rounded-full blur-[150px] animate-pulse" />
+                <div
+                    className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[150px] animate-pulse"
+                    style={{ background: "hsla(280, 85%, 40%, 0.12)" }}
+                />
+                <div
+                    className="absolute bottom-[-20%] left-[-10%] w-[40%] h-[40%] rounded-full blur-[150px] animate-pulse"
+                    style={{ background: "hsla(260, 100%, 40%, 0.10)" }}
+                />
             </div>
 
             <div className="relative z-10 w-full max-w-md px-6">
-                <div className="glass-card-static p-8 shadow-2xl animate-slide-up">
+                <div className="glass-l2 p-8 shadow-2xl animate-slide-up" style={{ borderRadius: "var(--radius-xl)" }}>
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-blue-600 mb-4 shadow-lg shadow-purple-500/20">
-                            <ShieldCheck className="w-7 h-7 text-white" />
+                        <div
+                            className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+                            style={{
+                                background: "var(--gradient-primary)",
+                                boxShadow: "0 8px 24px hsla(260, 100%, 50%, 0.2)",
+                            }}
+                        >
+                            <ShieldCheck className="w-7 h-7" style={{ color: "white" }} />
                         </div>
-                        <h1 className="text-2xl font-bold text-white">
+                        <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
                             Create Account
                         </h1>
-                        <p className="text-slate-500 text-sm mt-2">
+                        <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>
                             Join the Aegion Control Plane
                         </p>
                     </div>
 
                     {/* Error */}
                     {displayError && (
-                        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 mb-6 animate-slide-down">
-                            <AlertCircle size={16} className="text-red-400 shrink-0" />
-                            <p className="text-sm text-red-400">{displayError}</p>
+                        <div
+                            className="flex items-center gap-2 px-4 py-3 rounded-xl mb-6 animate-slide-down"
+                            style={{
+                                background: "hsla(350, 90%, 62%, 0.08)",
+                                border: "1px solid hsla(350, 90%, 62%, 0.20)",
+                            }}
+                        >
+                            <AlertCircle size={16} className="shrink-0" style={{ color: "var(--accent-risk)" }} />
+                            <p className="text-sm" style={{ color: "var(--accent-risk)" }}>{displayError}</p>
                         </div>
                     )}
 
                     <form onSubmit={handleSignup} className="space-y-4">
                         <div>
-                            <label className="text-xs text-slate-400 mb-1.5 block">
+                            <label className="text-xs mb-1.5 block" style={{ color: "var(--text-muted)" }}>
                                 Display Name
                             </label>
                             <input
@@ -90,7 +108,7 @@ export default function SignupPage() {
                         </div>
 
                         <div>
-                            <label className="text-xs text-slate-400 mb-1.5 block">
+                            <label className="text-xs mb-1.5 block" style={{ color: "var(--text-muted)" }}>
                                 Email
                             </label>
                             <input
@@ -104,7 +122,7 @@ export default function SignupPage() {
                         </div>
 
                         <div>
-                            <label className="text-xs text-slate-400 mb-1.5 block">
+                            <label className="text-xs mb-1.5 block" style={{ color: "var(--text-muted)" }}>
                                 Password
                             </label>
                             <div className="relative">
@@ -119,7 +137,8 @@ export default function SignupPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                                    style={{ color: "var(--text-muted)" }}
                                 >
                                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
@@ -127,7 +146,7 @@ export default function SignupPage() {
                         </div>
 
                         <div>
-                            <label className="text-xs text-slate-400 mb-1.5 block">
+                            <label className="text-xs mb-1.5 block" style={{ color: "var(--text-muted)" }}>
                                 Confirm Password
                             </label>
                             <input
@@ -143,16 +162,22 @@ export default function SignupPage() {
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-50 mt-2"
+                            className="w-full py-3 rounded-xl font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-50 mt-2"
+                            style={{
+                                background: "var(--gradient-primary)",
+                                color: "white",
+                                boxShadow: "0 4px 20px hsla(260, 100%, 50%, 0.2)",
+                            }}
                         >
                             {submitting ? "Creating account..." : "Create Account"}
                         </button>
 
-                        <div className="text-center text-xs text-slate-500 mt-4">
+                        <div className="text-center text-xs mt-4" style={{ color: "var(--text-muted)" }}>
                             Already have an account?{" "}
                             <Link
                                 href="/login"
-                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                                className="transition-colors"
+                                style={{ color: "var(--accent-reason)" }}
                             >
                                 Sign in
                             </Link>
