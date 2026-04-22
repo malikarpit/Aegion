@@ -45,19 +45,29 @@ class CouncilService:
     - Human approval is always required for T1+
     """
     
+    # Phase 94: Debate round count by decision tier
+    # Higher-stakes proposals get more rounds of deliberation
+    ROUNDS_BY_TIER = {
+        DecisionTier.T0: 1,  # Quick consensus — single round
+        DecisionTier.T1: 1,  # Standard — single round
+        DecisionTier.T2: 2,  # Important — two rounds (claim + rebuttal)
+        DecisionTier.T3: 3,  # Critical — three rounds (claim + rebuttal + synthesis)
+    }
 
-    def __init__(self, llm_port=None, repository: Optional[CouncilRepository] = None):
+    def __init__(self, llm_port=None, repository: Optional[CouncilRepository] = None, council_engine=None):
         """
         Initialize Council Service.
         
         Args:
             llm_port: Optional LLM port for AI invocations
             repository: Optional Persistence adapter
+            council_engine: Optional ACK CouncilEngine for multi-model execution
         """
 
         self.llm_port = llm_port
         self.gateway = LLMGateway(llm_port) if llm_port else None
         self.repository = repository
+        self.council_engine = council_engine  # ACK engine — set at startup or via bridge
         self._members: Dict[str, CouncilMember] = {}
         # We only use _sessions as a fallback in-memory cache if no repo provided
         self._memory_sessions: Dict[str, CouncilSession] = {}
@@ -131,6 +141,30 @@ class CouncilService:
         self._members[member.member_id] = member
         logger.info(f"Registered council member: {member.member_id} ({member.role})")
     
+    async def convene_session_via_ack(
+        self,
+        proposal: DecisionIntent,
+        workspace_id: str,
+        member_ids: Optional[List[str]] = None,
+    ) -> CouncilSession:
+        """
+        Convene a council session using the ACK Council Engine (bridge path).
+
+        This method delegates LLM execution to the multi-model ACK engine
+        while preserving all governance gates (freeze mode, health, sentinel).
+        """
+        from .council_bridge import CouncilBridge
+        bridge = CouncilBridge(self.council_engine)
+        session = await bridge.consult_as_session(proposal, workspace_id, member_ids)
+
+        # Persist the session
+        if self.repository:
+            await self.repository.save_session(session)
+        else:
+            self._memory_sessions[session.session_id] = session
+
+        return session
+
     async def convene_session(
         self,
         proposal: DecisionIntent,
@@ -139,6 +173,10 @@ class CouncilService:
     ) -> CouncilSession:
         """
         Convene a council session to evaluate a proposal.
+        
+        If ACK CouncilEngine is available and has providers, delegates to
+        the ACK bridge for multi-model execution. Otherwise falls back to
+        the legacy LLM gateway path.
         
         Args:
             proposal: The proposal to evaluate
@@ -160,12 +198,42 @@ class CouncilService:
         if health.status == HealthStatus.DEGRADED:
             # Policy: High stakes proposals require fully healthy council
             if proposal.calculated_tier in (DecisionTier.T2, DecisionTier.T3):
-                raise GovernanceError(
-                    f"Cannot evaluate {proposal.calculated_tier.value} proposal in DEGRADED mode. "
-                    f"Details: {health.details}"
+                # Exception: if ACK engine has providers, allow degraded v1 gateway
+                has_ack = (
+                    self.council_engine is not None
+                    and hasattr(self.council_engine, 'model_router')
+                    and self.council_engine.model_router.providers
                 )
-            # T0/T1 allowed but logged
-            logger.warning(f"Convening session for {proposal.title} in DEGRADED mode.")
+                if not has_ack:
+                    raise GovernanceError(
+                        f"Cannot evaluate {proposal.calculated_tier.value} proposal in DEGRADED mode. "
+                        f"Details: {health.details}"
+                    )
+                logger.info(
+                    f"v1 gateway degraded but ACK engine available — proceeding with ACK bridge "
+                    f"for {proposal.calculated_tier.value} proposal."
+                )
+            else:
+                # T0/T1 allowed but logged
+                logger.warning(f"Convening session for {proposal.title} in DEGRADED mode.")
+
+        # ACK Bridge path: prefer multi-model engine when available
+        if (
+            self.council_engine is not None
+            and hasattr(self.council_engine, 'model_router')
+            and self.council_engine.model_router.providers
+        ):
+            try:
+                session = await self.convene_session_via_ack(proposal, workspace_id, member_ids)
+                # Sentinel enforcement still applies
+                for opinion in session.opinions:
+                    if opinion.metadata.get("blocking") is True and opinion.metadata.get("stage") == "sentinel_assessment":
+                        raise GovernanceError(f"Sentinel blocked proposal: {opinion.analysis[:100]}...")
+                return session
+            except GovernanceError:
+                raise  # Re-raise governance errors
+            except Exception as exc:
+                logger.warning(f"ACK bridge failed, falling back to legacy path: {exc}")
 
         start_time = datetime.now(timezone.utc).timestamp()
 
@@ -203,43 +271,54 @@ class CouncilService:
             }
         )
         
-        # Collect opinions from each member in parallel
-        cors = [
-            self._get_member_opinion(member, proposal, workspace_id)
-            for member in members
-        ]
-        
-        # Gather results (parallel execution)
-        results = await asyncio.gather(*cors, return_exceptions=True)
-        
-        opinions = []
+        # Collect opinions from each member in parallel — Phase 94: multi-round debate
+        num_rounds = self.ROUNDS_BY_TIER.get(proposal.calculated_tier, 1)
+        all_opinions: List[CouncilOpinion] = []
         total_tokens = 0
-        
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(
-                    f"Council member {members[i].member_id} failed: {str(result)}"
+
+        for round_num in range(1, num_rounds + 1):
+            # Pass prior round opinions as context for rebuttal rounds
+            prior_context = None
+            if round_num > 1 and all_opinions:
+                prior_context = "\n\n".join(
+                    f"[Round {round_num - 1}] {op.member_id} ({op.vote.value}): {op.analysis[:200]}"
+                    for op in all_opinions
                 )
-                # Create fallback error opinion
-                opinions.append(CouncilOpinion(
-                    member_id=members[i].member_id,
-                    proposal_id=proposal.intent_id,
-                    vote=CouncilVote.ABSTAIN,
-                    confidence=0.0,
-                    analysis=f"System Error: {str(result)}",
-                    tokens_consumed=0
-                ))
-            else:
-                opinions.append(result)
-                total_tokens += result.tokens_consumed
-        
-        # Update session
+
+            cors = [
+                self._get_member_opinion(
+                    member, proposal, workspace_id,
+                    round_num=round_num, prior_opinions=prior_context
+                )
+                for member in members
+            ]
+
+            results = await asyncio.gather(*cors, return_exceptions=True)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        f"Council member {members[i].member_id} failed (round {round_num}): {str(result)}"
+                    )
+                    all_opinions.append(CouncilOpinion(
+                        member_id=members[i].member_id,
+                        proposal_id=proposal.intent_id,
+                        vote=CouncilVote.ABSTAIN,
+                        confidence=0.0,
+                        analysis=f"System Error (Round {round_num}): {str(result)}",
+                        tokens_consumed=0
+                    ))
+                else:
+                    all_opinions.append(result)
+                    total_tokens += result.tokens_consumed
+
+        # Update session with all round opinions
         session = CouncilSession(
             session_id=session.session_id,
             proposal_id=session.proposal_id,
             workspace_id=session.workspace_id,
             member_ids=session.member_ids,
-            opinions=opinions,
+            opinions=all_opinions,
             status="completed",
             started_at=session.started_at,
             completed_at=datetime.now(timezone.utc),
@@ -306,7 +385,9 @@ class CouncilService:
         self,
         member: CouncilMember,
         proposal: DecisionIntent,
-        workspace_id: str
+        workspace_id: str,
+        round_num: int = 1,
+        prior_opinions: Optional[str] = None,
     ) -> CouncilOpinion:
         """Get opinion from a council member."""
         # If no LLM port, create mock opinion based on role
@@ -322,6 +403,19 @@ class CouncilService:
             schema = ChildDebateResult
             
         prompt = self._create_prompt(member, proposal, schema)
+        
+        # Phase 94: Inject round context for rebuttal rounds
+        if round_num > 1 and prior_opinions:
+            prompt += f"""
+
+DEBATE ROUND {round_num} — REBUTTAL CONTEXT:
+This is round {round_num} of the debate. Below are opinions from the prior round.
+Consider, rebut, or refine your position based on what others said:
+
+{prior_opinions}
+
+Your task: Provide your UPDATED analysis for round {round_num}, incorporating or challenging the above perspectives.
+"""
         
         # Determine timeout based on role/stage
         if member.role == CouncilRole.SYNTHESIZER:

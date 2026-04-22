@@ -21,6 +21,7 @@ Modules:
   - analytics.py       : Council-specific analytics engine (Phase 51)
   - prompt_gateway.py  : Cheap query pre-processor & intent clarifier (Phase 76)
   - adaptive_council.py: Right-size model count from complexity (Phase 77)
+  - circuit_breaker.py : Per-provider resilience state machine
   - types.py           : Shared type system
 
 Providers: OpenAI, Anthropic, DeepSeek, Google Gemini, xAI/Grok,
@@ -30,7 +31,17 @@ Providers: OpenAI, Anthropic, DeepSeek, Google Gemini, xAI/Grok,
 from .engine import CouncilEngine, get_council_engine
 from .model_router import ModelRouter, MODEL_CATALOG, ModelSpec, ModelCapability
 from .cascade import LLMCascade
-from .types import CouncilType, CouncilProfile, ModelResponse, CouncilResult
+from .circuit_breaker import (
+    CircuitBreakerConfig,
+    CircuitBreakerRegistry,
+    CircuitState,
+    ProviderHealth,
+    get_circuit_breaker_registry,
+)
+from .types import (
+    CouncilType, CouncilProfile, ModelResponse, CouncilResult,
+    EngineHealth, EngineStatus,
+)
 from .prompt_gateway import PromptGateway, prompt_gateway
 from .adaptive_council import AdaptiveCouncil, adaptive_council
 
@@ -42,10 +53,17 @@ __all__ = [
     "ModelSpec",
     "ModelCapability",
     "LLMCascade",
+    "CircuitBreakerConfig",
+    "CircuitBreakerRegistry",
+    "CircuitState",
+    "ProviderHealth",
+    "get_circuit_breaker_registry",
     "CouncilType",
     "CouncilProfile",
     "ModelResponse",
     "CouncilResult",
+    "EngineHealth",
+    "EngineStatus",
     "PromptGateway",
     "prompt_gateway",
     "AdaptiveCouncil",

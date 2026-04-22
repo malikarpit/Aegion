@@ -185,6 +185,7 @@ class SessionOwnership:
             action="SESSION_OWNERSHIP_TRANSFERRED",
             actor=from_user_id,
             target=to_user_id,
+            justification=f"Ownership transferred from {from_user_id} to {to_user_id}",
             session_id=session_id
         )
         
