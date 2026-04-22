@@ -256,6 +256,28 @@ class EventStore:
             f"aggregate={agg_key}"
         )
 
+        # ── Persist to Supabase timeline_events (best-effort) ──
+        try:
+            from ...db.supabase_client import get_supabase_client
+            get_supabase_client().table("timeline_events").insert({
+                "workspace_id": event.workspace_id,
+                "event_type": event.event_type.value,
+                "title": f"{event.aggregate_type}.{event.event_type.value}",
+                "actor": event.actor_id,
+                "entity_id": event.aggregate_id,
+                "entity_type": event.aggregate_type,
+                "metadata": {
+                    "event_id": event.event_id,
+                    "sequence": event.sequence,
+                    "payload": event.payload,
+                    "causation_id": event.causation_id,
+                    "correlation_id": event.correlation_id,
+                    "event_hash": event.event_hash,
+                },
+            }).execute()
+        except Exception as exc:
+            logger.warning(f"Event persistence to timeline_events failed (non-fatal): {exc}")
+
         return event
 
     # ── Queries ───────────────────────────────────

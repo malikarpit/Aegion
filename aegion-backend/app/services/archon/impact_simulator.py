@@ -19,7 +19,7 @@ from ...contracts.decision_intent import DecisionTier
 from ...contracts.evidence import Evidence
 from .invariant_engine import get_invariant_engine, InvariantResult
 from .gates import get_archon
-from ...adapters.neo4j_graph import Neo4jKnowledgeGraph
+from ...services.graph_provider import get_shared_graph
 
 
 @dataclass
@@ -57,8 +57,8 @@ class ImpactSimulator:
         )
     """
 
-    def __init__(self, graph: Optional[Neo4jKnowledgeGraph] = None):
-        self.graph = graph or Neo4jKnowledgeGraph()
+    def __init__(self, graph=None):
+        self.graph = graph or get_shared_graph()
         self.invariant_engine = get_invariant_engine()
         # We don't need ArchonGates instance directly as we reuse InvariantEngine
         # but we might need policy logic if we want to simulate tier classification.

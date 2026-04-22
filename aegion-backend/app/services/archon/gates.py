@@ -527,6 +527,27 @@ class ArchonGates:
                 approver=approver.user_id,
                 tier=tier.value
             )
+
+            # ── Persist to Supabase decisions table (best-effort) ──
+            try:
+                from ...db.supabase_client import get_supabase_client
+                get_supabase_client().table("decisions").insert({
+                    "workspace_id": getattr(approver, 'workspace_id', None),
+                    "proposal_id": proposal_id,
+                    "decision_type": "approval",
+                    "tier": tier.value,
+                    "outcome": "approved",
+                    "actor_id": approver.user_id,
+                    "evidence_ids": [e.evidence_id for e in evidence_list],
+                    "metadata": {
+                        "evidence_count": len(evidence_list),
+                        "invariants_evaluated": inv_result.evaluated_count,
+                        "invariants_skipped": inv_result.skipped_count,
+                        "audit_event_id": event.event_id,
+                    },
+                }).execute()
+            except Exception as exc:
+                logger.warning(f"Decision persist failed (non-fatal): {exc}")
             
             return event
     
