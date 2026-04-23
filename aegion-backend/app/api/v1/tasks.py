@@ -36,6 +36,7 @@ class CreateTaskRequest(BaseModel):
     tags: Optional[List[str]] = None
     metadata: Optional[dict] = None
     repo_path: Optional[str] = None  # for worktree isolation
+    parent_task_id: Optional[str] = None  # W4.2: subtask of parent
 
 
 class UpdateTaskRequest(BaseModel):
@@ -80,6 +81,8 @@ class TaskResponse(BaseModel):
     run_count: int = 0
     tags: List[str] = []
     worktree_path: Optional[str] = None
+    parent_task_id: Optional[str] = None
+    child_task_ids: List[str] = []
 
 
 class TaskRunResponse(BaseModel):
@@ -118,6 +121,8 @@ def _task_to_response(task: Task) -> TaskResponse:
         run_count=task.run_count,
         tags=task.tags,
         worktree_path=task.worktree_path,
+        parent_task_id=getattr(task, 'parent_task_id', None),
+        child_task_ids=getattr(task, 'child_task_ids', []),
     )
 
 
@@ -175,8 +180,19 @@ async def create_task(
         metadata=request.metadata or {},
     )
 
-    await _tasks.save(task)
+    # W4.2: Link to parent task if specified
+    if request.parent_task_id:
+        parent = await _tasks.get(request.parent_task_id)
+        if not parent:
+            raise HTTPException(status_code=404, detail=f"Parent task {request.parent_task_id} not found")
+        task.parent_task_id = request.parent_task_id
+        if not hasattr(parent, 'child_task_ids') or parent.child_task_ids is None:
+            parent.child_task_ids = []
+        parent.child_task_ids.append(task_id)
+        parent.updated_at = now
+        await _tasks.save(parent)
 
+    await _tasks.save(task)
 
     logger.info(f"Task created: {task_id} by {user.user_id}")
     return _task_to_response(task)

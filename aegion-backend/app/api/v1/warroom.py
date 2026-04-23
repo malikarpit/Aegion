@@ -55,6 +55,8 @@ class IncidentResponse(BaseModel):
     created_by: str
     created_at: str
     resolved_at: Optional[str] = None
+    assigned_to: Optional[str] = None
+    status_history: List[Dict] = []
     tags: List[str]
 
 
@@ -89,6 +91,15 @@ class Alert(BaseModel):
     incident_id: Optional[str] = None
 
 
+class AssignIncidentRequest(BaseModel):
+    assigned_to: str
+
+
+class UpdateIncidentRequest(BaseModel):
+    status: Optional[str] = None
+    reason: Optional[str] = None
+
+
 # ========== Helpers ==========
 
 
@@ -103,6 +114,8 @@ def _incident_to_response(i: Incident) -> IncidentResponse:
         created_by=i.created_by,
         created_at=i.created_at.isoformat(),
         resolved_at=i.resolved_at.isoformat() if i.resolved_at else None,
+        assigned_to=getattr(i, 'assigned_to', None),
+        status_history=getattr(i, 'status_history', []),
         tags=i.tags,
     )
 
@@ -168,8 +181,27 @@ async def create_incident(
         metadata=request.metadata or {},
     )
 
+    # W5.3: Initialize status history
+    if not hasattr(incident, 'status_history') or incident.status_history is None:
+        incident.status_history = []
+    incident.status_history.append({
+        "status": "open", "changed_by": user.user_id,
+        "timestamp": now.isoformat(), "reason": "Incident created",
+    })
+
     await _incidents_store.save(incident)
     logger.info(f"Incident created: {incident_id} title={request.title}")
+
+    # W5.1: Emit WebSocket event
+    try:
+        from ...services.event_emitter import emit_incident_updated
+        await emit_incident_updated(
+            workspace_id=getattr(user, 'workspace_id', 'default'),
+            incident_id=incident_id, status="open", changed_by=user.user_id,
+        )
+    except Exception as exc:
+        logger.debug(f"WebSocket incident emission failed (non-fatal): {exc}")
+
     return _incident_to_response(incident)
 
 
@@ -211,10 +243,15 @@ async def get_incident(
 @router.patch("/incidents/{incident_id}", response_model=IncidentResponse)
 async def update_incident(
     incident_id: str,
+    request: UpdateIncidentRequest = None,
     status_update: Optional[str] = None,
     user: AuthorityContext = Depends(get_current_user),
 ):
-    """Update incident status (e.g. resolve)."""
+    """
+    Update incident status (W5.3 enhanced).
+    
+    Records status change in status_history with timestamp, actor, and reason.
+    """
     from ...services.archon import get_archon, GovernanceError
     archon = get_archon()
     try:
@@ -226,16 +263,94 @@ async def update_incident(
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
 
-    if status_update:
-        new_status = IncidentStatus(status_update)
+    # Get the status to update from either body or query param
+    new_status_str = None
+    reason = None
+    if request and request.status:
+        new_status_str = request.status
+        reason = request.reason
+    elif status_update:
+        new_status_str = status_update
+
+    if new_status_str:
+        new_status = IncidentStatus(new_status_str)
+        old_status = incident.status.value
         incident.status = new_status
         incident.updated_at = datetime.now(timezone.utc)
+
+        # W5.3: Record in status history
+        if not hasattr(incident, 'status_history') or incident.status_history is None:
+            incident.status_history = []
+        incident.status_history.append({
+            "status": new_status.value,
+            "previous_status": old_status,
+            "changed_by": user.user_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "reason": reason or f"Status changed to {new_status.value}",
+        })
         
         if new_status == IncidentStatus.RESOLVED:
             incident.resolved_at = datetime.now(timezone.utc)
             
     await _incidents_store.save(incident)
-    logger.info(f"Incident updated: {incident_id} status={status_update}")
+    logger.info(f"Incident updated: {incident_id} status={new_status_str}")
+
+    # W5.1: Emit WebSocket event
+    try:
+        from ...services.event_emitter import emit_incident_updated
+        await emit_incident_updated(
+            workspace_id=getattr(user, 'workspace_id', 'default'),
+            incident_id=incident_id, status=new_status_str or incident.status.value,
+            changed_by=user.user_id,
+        )
+    except Exception as exc:
+        logger.debug(f"WebSocket status update emission failed (non-fatal): {exc}")
+
+    return _incident_to_response(incident)
+
+
+@router.post("/incidents/{incident_id}/assign", response_model=IncidentResponse)
+async def assign_incident(
+    incident_id: str,
+    request: AssignIncidentRequest,
+    user: AuthorityContext = Depends(get_current_user),
+):
+    """
+    Assign an incident to a user (W5.3).
+    
+    Updates the assigned_to field and records in status_history.
+    """
+    from ...services.archon import get_archon, GovernanceError
+    archon = get_archon()
+    try:
+        archon.guard_writable()
+    except GovernanceError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    incident = await _incidents_store.get(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+
+    incident.assigned_to = request.assigned_to
+    incident.updated_at = datetime.now(timezone.utc)
+
+    # If still "open", auto-transition to "investigating"
+    if incident.status == IncidentStatus.OPEN:
+        incident.status = IncidentStatus.INVESTIGATING
+
+    # Record in status history
+    if not hasattr(incident, 'status_history') or incident.status_history is None:
+        incident.status_history = []
+    incident.status_history.append({
+        "status": incident.status.value,
+        "changed_by": user.user_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "reason": f"Assigned to {request.assigned_to}",
+    })
+
+    await _incidents_store.save(incident)
+    logger.info(f"Incident assigned: {incident_id} → {request.assigned_to}")
+
     return _incident_to_response(incident)
 
 
