@@ -3,7 +3,8 @@
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`rounded-lg bg-white/5 shimmer ${className}`}
+      className={`rounded-lg shimmer ${className}`}
+      style={{ background: "hsla(260, 20%, 80%, 0.04)" }}
       aria-hidden
     />
   );
@@ -32,7 +33,7 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
         ))}
       </div>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex gap-4 px-4 py-4 border-t border-white/5">
+        <div key={i} className="flex gap-4 px-4 py-4" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           {[1, 2, 3, 4].map((j) => (
             <Skeleton key={j} className="h-4 flex-1" />
           ))}
@@ -73,7 +74,7 @@ export function PageLoader() {
     <div className="flex items-center justify-center h-[60vh]">
       <div className="flex flex-col items-center gap-4">
         <Spinner size={32} />
-        <p className="text-sm text-slate-500">Loading...</p>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading...</p>
       </div>
     </div>
   );

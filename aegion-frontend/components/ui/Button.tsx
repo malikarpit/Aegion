@@ -3,17 +3,36 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
 import { Loader2 } from "lucide-react";
 
-const variants = {
-  primary:
-    "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30",
-  secondary:
-    "bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 hover:border-white/20",
-  ghost: "hover:bg-white/5 text-slate-400 hover:text-white",
-  danger:
-    "bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 hover:border-red-500/40",
-  success:
-    "bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20",
-} as const;
+/* ══════════════════════════════════════════════════════════════
+   BUTTON — Design Token Variant System
+   ══════════════════════════════════════════════════════════════ */
+
+const variantStyles: Record<string, React.CSSProperties> = {
+  primary: {
+    background: "var(--gradient-primary)",
+    color: "white",
+    boxShadow: "0 4px 20px hsla(260, 100%, 50%, 0.2)",
+  },
+  secondary: {
+    background: "hsla(260, 20%, 80%, 0.05)",
+    color: "var(--text-primary)",
+    border: "1px solid var(--border-default)",
+  },
+  ghost: {
+    background: "transparent",
+    color: "var(--text-secondary)",
+  },
+  danger: {
+    background: "hsla(350, 90%, 62%, 0.08)",
+    color: "var(--accent-risk)",
+    border: "1px solid hsla(350, 90%, 62%, 0.20)",
+  },
+  success: {
+    background: "hsla(150, 90%, 55%, 0.08)",
+    color: "var(--accent-trust)",
+    border: "1px solid hsla(150, 90%, 55%, 0.20)",
+  },
+};
 
 const sizes = {
   sm: "px-3 py-1.5 text-xs rounded-lg gap-1.5",
@@ -22,7 +41,7 @@ const sizes = {
 } as const;
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: keyof typeof variants;
+  variant?: keyof typeof variantStyles;
   size?: keyof typeof sizes;
   loading?: boolean;
   icon?: React.ReactNode;
@@ -52,8 +71,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           inline-flex items-center justify-center font-medium
           transition-all duration-200 active:scale-[0.97]
           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100
-          ${variants[variant]} ${sizes[size]} ${className}
+          hover:brightness-110
+          ${sizes[size]} ${className}
         `}
+        style={variantStyles[variant] || variantStyles.primary}
         {...props}
       >
         {loading ? (

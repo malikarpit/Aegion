@@ -59,7 +59,8 @@ export function Modal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 backdrop-blur-sm"
+            style={{ background: "hsla(248, 10%, 3%, 0.65)" }}
             onClick={onClose}
           />
 
@@ -71,10 +72,13 @@ export function Modal({
             transition={{ duration: 0.2, ease: "easeOut" }}
             className={`
               relative w-full ${sizeMap[size]} mx-4
-              bg-[#111118] border border-white/10
-              rounded-2xl shadow-2xl shadow-black/50
-              overflow-hidden
+              rounded-2xl shadow-2xl overflow-hidden
             `}
+            style={{
+              background: "var(--surface-1)",
+              border: "1px solid var(--border-default)",
+              boxShadow: "0 25px 50px hsla(248, 30%, 4%, 0.5)",
+            }}
           >
             {/* Header */}
             {(title || description) && (
@@ -82,19 +86,20 @@ export function Modal({
                 <div className="flex items-start justify-between">
                   <div>
                     {title && (
-                      <h2 className="text-lg font-semibold text-white">
+                      <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
                         {title}
                       </h2>
                     )}
                     {description && (
-                      <p className="text-sm text-slate-400 mt-1">
+                      <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
                         {description}
                       </p>
                     )}
                   </div>
                   <button
                     onClick={onClose}
-                    className="p-1.5 rounded-lg hover:bg-white/5 text-slate-500 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg transition-colors"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     <X size={18} />
                   </button>
@@ -109,7 +114,7 @@ export function Modal({
 
             {/* Footer */}
             {footer && (
-              <div className="px-6 py-4 border-t border-white/5 flex items-center justify-end gap-3">
+              <div className="px-6 py-4 flex items-center justify-end gap-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 {footer}
               </div>
             )}

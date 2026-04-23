@@ -6,7 +6,7 @@ interface ProgressRingProps {
     strokeWidth?: number;
     label?: string;
     sublabel?: string;
-    color?: string;        // Tailwind color class for stroke
+    color?: string;        // CSS color value or 'auto'
     className?: string;
 }
 
@@ -16,7 +16,7 @@ export function ProgressRing({
     strokeWidth = 8,
     label,
     sublabel,
-    color = "stroke-blue-500",
+    color = "var(--accent-reason)",
     className = "",
 }: ProgressRingProps) {
     const radius = (size - strokeWidth) / 2;
@@ -24,10 +24,10 @@ export function ProgressRing({
     const offset = circumference - (Math.min(value, 100) / 100) * circumference;
 
     const getColor = (v: number) => {
-        if (v >= 80) return "stroke-emerald-400";
-        if (v >= 50) return "stroke-yellow-400";
-        if (v >= 25) return "stroke-orange-400";
-        return "stroke-red-400";
+        if (v >= 80) return "var(--status-success)";
+        if (v >= 50) return "var(--status-warning)";
+        if (v >= 25) return "var(--accent-cost)";
+        return "var(--status-error)";
     };
 
     const ringColor = color === "auto" ? getColor(value) : color;
@@ -47,7 +47,7 @@ export function ProgressRing({
                     r={radius}
                     fill="none"
                     className="progress-ring-bg"
-                    strokeWidth={strokeWidth}
+                    stroke="var(--border-default)"
                 />
                 {/* Filled ring */}
                 <circle
@@ -55,7 +55,8 @@ export function ProgressRing({
                     cy={size / 2}
                     r={radius}
                     fill="none"
-                    className={`${ringColor} progress-ring-fill`}
+                    className="progress-ring-fill"
+                    stroke={ringColor}
                     strokeWidth={strokeWidth}
                     strokeLinecap="round"
                     strokeDasharray={circumference}
@@ -64,15 +65,15 @@ export function ProgressRing({
             </svg>
             {/* Center text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-white tabular-nums">
+                <span className="text-2xl font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
                     {Math.round(value)}%
                 </span>
                 {label && (
-                    <span className="text-xs text-slate-400 mt-0.5">{label}</span>
+                    <span className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>{label}</span>
                 )}
             </div>
             {sublabel && (
-                <span className="text-xs text-slate-500 mt-2">{sublabel}</span>
+                <span className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>{sublabel}</span>
             )}
         </div>
     );

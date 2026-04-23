@@ -35,7 +35,10 @@ export function Tabs({
   return (
     <div className={className}>
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.02] border border-white/5 mb-6 overflow-x-auto">
+      <div
+        className="flex items-center gap-1 p-1 rounded-xl mb-6 overflow-x-auto"
+        style={{ background: "hsla(260, 20%, 80%, 0.02)", border: "1px solid var(--border-subtle)" }}
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -43,33 +46,30 @@ export function Tabs({
             className={`
               relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium
               transition-colors duration-200 whitespace-nowrap
-              ${
-                activeTab === tab.id
-                  ? "text-white"
-                  : "text-slate-500 hover:text-slate-300"
+              ${activeTab === tab.id
+                  ? ""
+                  : ""
               }
             `}
           >
             {activeTab === tab.id && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute inset-0 bg-white/[0.06] border border-white/10 rounded-lg"
+                className="absolute inset-0 rounded-lg"
+                style={{ background: "hsla(260, 20%, 80%, 0.06)", border: "1px solid var(--border-default)" }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
             )}
-            <span className="relative flex items-center gap-2">
+            <span className="relative flex items-center gap-2" style={{ color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-muted)" }}>
               {tab.icon}
               {tab.label}
               {tab.count !== undefined && (
                 <span
-                  className={`
-                    text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                    ${
-                      activeTab === tab.id
-                        ? "bg-blue-500/20 text-blue-400"
-                        : "bg-white/5 text-slate-500"
-                    }
-                  `}
+                  className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                  style={{
+                    background: activeTab === tab.id ? "hsla(260, 100%, 70%, 0.12)" : "hsla(260, 20%, 80%, 0.05)",
+                    color: activeTab === tab.id ? "var(--accent-reason)" : "var(--text-muted)",
+                  }}
                 >
                   {tab.count}
                 </span>
