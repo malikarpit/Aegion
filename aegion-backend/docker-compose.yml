@@ -30,10 +30,13 @@ services:
       - NEO4J_PASSWORD=aegion-dev-password
       - AUDIT_SIGNING_KEY=${AUDIT_SIGNING_KEY:-aegion-dev-signing-key}
       - RATE_LIMIT_ENABLED=true
+      - SUPABASE_URL=postgresql://aegion:aegion-dev-password@postgres:5432/aegion
     depends_on:
       redis:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/ready"]
@@ -122,9 +125,47 @@ services:
       - prometheus
     restart: unless-stopped
 
+  # ────────────────────────────────────────────────
+  # PostgreSQL + pgvector (W8.1)
+  # ────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=aegion
+      - POSTGRES_PASSWORD=aegion-dev-password
+      - POSTGRES_DB=aegion
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegion"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────────
+  # Frontend (W8.2 — uncomment when aegion-frontend is ready)
+  # ────────────────────────────────────────────────
+  # frontend:
+  #   build:
+  #     context: ../aegion-frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3001:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://backend:8000
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
 volumes:
   redis_data:
   neo4j_data:
   neo4j_logs:
   prometheus_data:
   grafana_data:
+  postgres_data:
