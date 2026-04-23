@@ -19,15 +19,124 @@ from ...models.workspace import (
     Workspace, WorkspaceWithMembers, WorkspaceMember, 
     WorkspaceRole, WorkspaceInvite, WorkspaceActivity
 )
-from ...adapters.firestore.workspace_repository import FirestoreWorkspaceRepository
+try:
+    from ...adapters.firestore.workspace_repository import FirestoreWorkspaceRepository
+    _repo = FirestoreWorkspaceRepository()
+except Exception:
+    # Firestore not available — fall back to Supabase-backed workspace operations
+    from ...db.supabase_client import get_supabase_client
+    class _SupabaseWorkspaceRepo:
+        """Workspace repo backed by Supabase kv_store (W3.1)."""
+        def __init__(self):
+            self._db = get_supabase_client()
+
+        async def create(self, workspace, owner_member):
+            self._db.table("kv_store").upsert({
+                "workspace_id": workspace.workspace_id,
+                "namespace": "workspaces",
+                "key": workspace.workspace_id,
+                "value": {
+                    "name": workspace.name,
+                    "description": workspace.description,
+                    "owner_id": workspace.owner_id,
+                    "members": [{"user_id": owner_member.user_id, "role": owner_member.role.value}],
+                    "created_at": workspace.created_at.isoformat() if hasattr(workspace.created_at, 'isoformat') else str(workspace.created_at),
+                },
+            }, on_conflict="workspace_id,namespace,key").execute()
+
+        async def get_with_members(self, workspace_id):
+            try:
+                result = self._db.table("kv_store").select("*").eq(
+                    "workspace_id", workspace_id,
+                ).eq("namespace", "workspaces").eq("key", workspace_id).execute()
+                if result.data:
+                    val = result.data[0].get("value", {})
+                    ws = Workspace(workspace_id=workspace_id, name=val.get("name", ""), description=val.get("description"), owner_id=val.get("owner_id", ""))
+                    members = [WorkspaceMember(user_id=m["user_id"], role=WorkspaceRole(m.get("role", "developer"))) for m in val.get("members", [])]
+                    return WorkspaceWithMembers(workspace=ws, members=members)
+            except Exception:
+                pass
+            return None
+
+        async def list_user_workspaces(self, user_id):
+            try:
+                result = self._db.table("kv_store").select("*").eq("namespace", "workspaces").execute()
+                workspaces = []
+                for row in (result.data or []):
+                    val = row.get("value", {})
+                    member_ids = [m.get("user_id") for m in val.get("members", [])]
+                    if user_id in member_ids:
+                        workspaces.append(Workspace(
+                            workspace_id=row.get("workspace_id", row.get("key", "")),
+                            name=val.get("name", ""), description=val.get("description"),
+                            owner_id=val.get("owner_id", ""),
+                        ))
+                return workspaces
+            except Exception:
+                return []
+
+        async def list_members(self, workspace_id):
+            ws = await self.get_with_members(workspace_id)
+            return ws.members if ws else []
+
+        async def create_invite(self, invite):
+            self._db.table("kv_store").upsert({
+                "workspace_id": invite.workspace_id, "namespace": "invites",
+                "key": invite.invite_id,
+                "value": {"email": invite.email, "role": invite.role.value, "invited_by": invite.invited_by},
+            }, on_conflict="workspace_id,namespace,key").execute()
+
+        async def log_activity(self, activity):
+            self._db.table("kv_store").upsert({
+                "workspace_id": activity.workspace_id, "namespace": "activity",
+                "key": activity.activity_id,
+                "value": {"event_type": activity.event_type, "actor_id": activity.actor_id, "description": activity.description},
+            }, on_conflict="workspace_id,namespace,key").execute()
+
+        async def remove_member(self, workspace_id, user_id):
+            ws = await self.get_with_members(workspace_id)
+            if ws:
+                val = {"name": ws.workspace.name, "description": ws.workspace.description, "owner_id": ws.workspace.owner_id,
+                       "members": [{"user_id": m.user_id, "role": m.role.value} for m in ws.members if m.user_id != user_id]}
+                self._db.table("kv_store").upsert({
+                    "workspace_id": workspace_id, "namespace": "workspaces", "key": workspace_id, "value": val,
+                }, on_conflict="workspace_id,namespace,key").execute()
+
+        async def update_member_role(self, workspace_id, user_id, role):
+            ws = await self.get_with_members(workspace_id)
+            if ws:
+                members = []
+                for m in ws.members:
+                    r = role.value if m.user_id == user_id else m.role.value
+                    members.append({"user_id": m.user_id, "role": r})
+                val = {"name": ws.workspace.name, "description": ws.workspace.description, "owner_id": ws.workspace.owner_id, "members": members}
+                self._db.table("kv_store").upsert({
+                    "workspace_id": workspace_id, "namespace": "workspaces", "key": workspace_id, "value": val,
+                }, on_conflict="workspace_id,namespace,key").execute()
+
+        async def get_recent_activity(self, workspace_id, limit=50):
+            try:
+                result = self._db.table("kv_store").select("*").eq(
+                    "workspace_id", workspace_id,
+                ).eq("namespace", "activity").limit(limit).execute()
+                return [WorkspaceActivity(
+                    activity_id=r.get("key", ""),
+                    workspace_id=workspace_id,
+                    event_type=r.get("value", {}).get("event_type", "unknown"),
+                    actor_id=r.get("value", {}).get("actor_id", ""),
+                    description=r.get("value", {}).get("description", ""),
+                ) for r in (result.data or [])]
+            except Exception:
+                return []
+
+    _repo = _SupabaseWorkspaceRepo()
+    from ...core.logging import logger as _ws_logger
+    _ws_logger.warning("Firestore unavailable — using Supabase workspace fallback")
+
 from .stream import broadcast_to_workspace
 from ...ports.events import EventMessage
 
-
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
-
-# Repository instance
-_repo = FirestoreWorkspaceRepository()
 
 
 # ========== Request/Response Models ==========

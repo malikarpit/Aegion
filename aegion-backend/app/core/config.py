@@ -5,6 +5,9 @@ Loads environment variables and provides a typed settings object.
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -46,6 +49,6 @@ class Settings(BaseSettings):
     # Audit integrity 
     audit_signing_key: str  # Required — set via Secret Manager in production
     
-    model_config = SettingsConfigDict(env_prefix="AEGION_")
+    model_config = SettingsConfigDict(env_prefix="AEGION_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

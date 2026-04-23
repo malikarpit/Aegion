@@ -269,14 +269,16 @@ manager = ConnectionManager()
 async def websocket_endpoint(
     websocket: WebSocket,
     workspace_id: str,
-    token: str = Query(...),
+    ticket: Optional[str] = Query(None),
+    token: Optional[str] = Query(None),  # Deprecated: backwards compat during migration
     last_event_id: Optional[int] = Query(None)
 ):
     """
     WebSocket endpoint for real-time collaboration.
     
-    Authentication: Requires a valid auth token as query parameter.
-    The token is verified server-side — user_id is extracted from claims.
+    Authentication (Phase 89):
+    - Primary: `ticket` query param (short-lived, one-time use via /auth/ws-ticket).
+    - Fallback: `token` query param (deprecated — will be removed after migration).
     
     Message Types (Client -> Server):
     - join_session: Join a governance session
@@ -291,19 +293,35 @@ async def websocket_endpoint(
     - state.changed: Session state changed
     - proposal.updated: Proposal was modified
     """
-    # Verify authentication token
-    from ...core.auth_config import verify_token
-    try:
-        claims = await verify_token(token)
-    except Exception:
-        claims = None
-    
-    if not claims or "uid" not in claims:
-        await websocket.close(code=4001, reason="Unauthorized: invalid token")
+    user_id = None
+    role = "viewer"
+
+    # Phase 89: Prefer ticket-exchange (secure)
+    if ticket:
+        from .auth import consume_ws_ticket
+        user_id = consume_ws_ticket(ticket)
+        if not user_id:
+            await websocket.close(code=4001, reason="Unauthorized: invalid or expired ticket")
+            return
+    elif token:
+        # Deprecated fallback — log warning for migration tracking
+        logger.warning(
+            "WebSocket connected with deprecated token param — migrate to ticket-exchange",
+            workspace_id=workspace_id,
+        )
+        from ...core.auth_config import verify_token
+        try:
+            claims = await verify_token(token)
+        except Exception:
+            claims = None
+        if not claims or "uid" not in claims:
+            await websocket.close(code=4001, reason="Unauthorized: invalid token")
+            return
+        user_id = claims["uid"]
+        role = claims.get("role", "viewer")
+    else:
+        await websocket.close(code=4001, reason="Unauthorized: no ticket or token provided")
         return
-    
-    user_id = claims["uid"]
-    role = claims.get("role", "viewer")
 
     # Verify workspace membership (mirrors SSE gate in stream.py)
     from ...adapters.firestore.workspace_repository import FirestoreWorkspaceRepository
