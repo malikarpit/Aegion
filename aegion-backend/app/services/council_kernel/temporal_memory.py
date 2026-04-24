@@ -434,3 +434,37 @@ def create_temporal_memory(
     outcome_window_days: int = 30,
 ) -> TemporalMemory:
     return TemporalMemory(top_k=top_k, outcome_window_days=outcome_window_days)
+
+
+async def query_changes_since(
+    workspace_id: str,
+    since: str,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    Query decisions that changed since a given timestamp (W1.6 — blueprint requirement).
+
+    Args:
+        workspace_id: Workspace to query.
+        since: ISO timestamp string (e.g. "2026-04-01T00:00:00Z").
+        limit: Maximum results.
+
+    Returns:
+        List of decision summaries with id, title, verdict, tier, created_at.
+    """
+    try:
+        from ...db.supabase_client import get_supabase_client
+        result = (
+            get_supabase_client()
+            .table("decisions")
+            .select("id,title,verdict,tier,confidence,created_at,updated_at")
+            .eq("workspace_id", workspace_id)
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        logger.warning(f"query_changes_since failed: {exc}")
+        return []

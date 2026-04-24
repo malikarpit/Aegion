@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -293,6 +294,46 @@ MODEL_CATALOG: Dict[str, ModelSpec] = {
     **OPENAI_MODELS, **ANTHROPIC_MODELS, **DEEPSEEK_MODELS,
     **GOOGLE_MODELS, **XAI_MODELS, **MISTRAL_MODELS, **COHERE_MODELS,
 }
+
+
+def _load_custom_models() -> Dict[str, ModelSpec]:
+    """
+    Load user-defined models from model_registry.json (W1.2).
+
+    JSON file is optional — if missing, only built-in catalog is used.
+    Each entry: { "model_id", "provider", "display_name", "context_window",
+                  "max_output_tokens", "input_price_per_m", "output_price_per_m",
+                  "capabilities": [str], "tier": int }
+    """
+    import json as _json
+    registry_path = os.path.join(os.path.dirname(__file__), "model_registry.json")
+    if not os.path.isfile(registry_path):
+        return {}
+    try:
+        with open(registry_path, "r") as f:
+            entries = _json.load(f)
+        custom: Dict[str, ModelSpec] = {}
+        for entry in entries:
+            caps = tuple(ModelCapability(c) for c in entry.get("capabilities", ["text"]))
+            custom[entry["model_id"]] = ModelSpec(
+                model_id=entry["model_id"],
+                provider=entry["provider"],
+                display_name=entry.get("display_name", entry["model_id"]),
+                context_window=entry.get("context_window", 128_000),
+                max_output_tokens=entry.get("max_output_tokens", 4_096),
+                input_price_per_m=entry.get("input_price_per_m", 1.0),
+                output_price_per_m=entry.get("output_price_per_m", 3.0),
+                capabilities=caps,
+                tier=entry.get("tier", 2),
+            )
+        return custom
+    except Exception as exc:
+        logger.warning(f"Failed to load model_registry.json: {exc}")
+        return {}
+
+
+# Merge custom models (JSON overrides built-in on conflict)
+MODEL_CATALOG.update(_load_custom_models())
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Provider ABC
@@ -1031,6 +1072,73 @@ class ModelRouter:
                 response_path=user_api_keys.get("custom_response_path", "choices.0.message.content"),
             )
             self.register_provider("custom", CustomProvider(cfg))
+
+    async def configure_single_key(self, api_key: str, provider_hint: Optional[str] = None) -> str:
+        """
+        Phase 98: Single-key onboarding (Mono-Council).
+
+        Detects the provider from the key format and registers it as the sole provider.
+        The full cascade, debate, and peer-review systems work with just one provider.
+
+        Key detection heuristics:
+          - sk-ant-*         → Anthropic
+          - sk-* / sess-*    → OpenAI
+          - AI*              → Google
+          - xai-*            → xAI
+          - dsk-*            → DeepSeek
+          - http*            → Ollama (URL, not key)
+          - *                → Tries OpenAI-compatible (most common)
+
+        Args:
+            api_key: The single API key or URL.
+            provider_hint: Optional explicit provider name to skip detection.
+
+        Returns:
+            The detected/registered provider name.
+        """
+        # Explicit hint takes priority
+        if provider_hint:
+            name = provider_hint.lower()
+        else:
+            # Auto-detect from key format
+            key = api_key.strip()
+            if key.startswith("sk-ant-"):
+                name = "anthropic"
+            elif key.startswith("sk-") or key.startswith("sess-"):
+                name = "openai"
+            elif key.startswith("AI"):
+                name = "google"
+            elif key.startswith("xai-"):
+                name = "xai"
+            elif key.startswith("dsk-"):
+                name = "deepseek"
+            elif key.startswith("http"):
+                name = "ollama"
+            else:
+                # Default to OpenAI-compatible — most custom endpoints use this format
+                name = "openai"
+
+        # Register the detected provider
+        provider_map = {
+            "openai": lambda k: OpenAIProvider(k),
+            "anthropic": lambda k: AnthropicProvider(k),
+            "deepseek": lambda k: DeepSeekProvider(k),
+            "google": lambda k: GeminiProvider(k),
+            "xai": lambda k: XAIProvider(k),
+            "mistral": lambda k: MistralProvider(k),
+            "cohere": lambda k: CohereProvider(k),
+            "ollama": lambda k: OllamaProvider(k),
+        }
+
+        factory = provider_map.get(name)
+        if factory:
+            self.register_provider(name, factory(api_key))
+        else:
+            # Unknown provider — try as OpenAI-compatible custom endpoint
+            self.register_provider(name, OpenAIProvider(api_key))
+
+        logger.info(f"Phase 98: Mono-council configured with single provider: {name}")
+        return name
 
     async def select_models(
         self,
