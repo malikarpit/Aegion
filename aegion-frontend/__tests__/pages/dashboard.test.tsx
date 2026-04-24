@@ -23,16 +23,16 @@ vi.mock('recharts', () => {
 describe('Dashboard Page', () => {
   it('renders the dashboard title and layout', () => {
     render(<DashboardPage />);
-    expect(screen.getByText('Council Overview')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('System overview and real-time governance metrics')).toBeInTheDocument();
   });
 
   it('renders stats cards with mock data', () => {
     render(<DashboardPage />);
     // Check if the mock stats are rendering
     expect(screen.getByText('Active Sessions')).toBeInTheDocument();
-    expect(screen.getByText('12')).toBeInTheDocument(); // Mock data value
-    expect(screen.getByText('Decisions Made')).toBeInTheDocument();
     expect(screen.getByText('Pending Proposals')).toBeInTheDocument();
+    expect(screen.getByText('Council Invocations')).toBeInTheDocument();
   });
 
   it('renders the activity feed', () => {
@@ -42,8 +42,9 @@ describe('Dashboard Page', () => {
 
   it('renders charts', () => {
     render(<DashboardPage />);
-    expect(screen.getByText('Cost vs Limit')).toBeInTheDocument();
-    expect(screen.getByText('Decision Distribution')).toBeInTheDocument();
-    expect(screen.getByText('Risk Level')).toBeInTheDocument();
+    expect(screen.getByText('Token Spend (7 days)')).toBeInTheDocument();
+    expect(screen.getByText('Budget Left')).toBeInTheDocument();
+    expect(screen.getByText('Cache Hits')).toBeInTheDocument();
+    expect(screen.getByText('System Health')).toBeInTheDocument();
   });
 });

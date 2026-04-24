@@ -2,31 +2,37 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import LoginPage from '@/app/login/page';
 
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({
+    user: null,
+    signInWithGoogle: vi.fn(),
+    signInWithEmail: vi.fn(),
+    loading: false,
+    error: null,
+  })
+}));
+
 describe('Login Page', () => {
   it('renders login form correctly', () => {
     render(<LoginPage />);
-    expect(screen.getByText('Sign in to Aegion')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('name@company.com')).toBeInTheDocument();
+    expect(screen.getByText('Aegion')).toBeInTheDocument();
+    expect(screen.getByText('AI Governance Control Plane')).toBeInTheDocument();
     expect(screen.getByText('Continue with Google')).toBeInTheDocument();
   });
 
-  it('toggles to OTP mode when form submitted', () => {
+  it('toggles to email mode when Sign in with Email is clicked', () => {
     render(<LoginPage />);
     
-    // Simulate typing email
-    const emailInput = screen.getByPlaceholderText('name@company.com');
-    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+    // Check initial state (select mode)
+    const emailBtn = screen.getByText('Sign in with Email');
+    expect(emailBtn).toBeInTheDocument();
     
-    // Check continue button (email mode)
-    const continueBtn = screen.getByText('Continue with Email');
-    expect(continueBtn).toBeInTheDocument();
+    // Click Sign in with Email
+    fireEvent.click(emailBtn);
     
-    // Click continue
-    fireEvent.click(continueBtn);
-    
-    // Should now show OTP input
-    expect(screen.getByText(/Enter the secure code/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter code')).toBeInTheDocument();
-    expect(screen.getByText('Verify Identity')).toBeInTheDocument();
+    // Should now show Email/Password inputs
+    expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
   });
 });

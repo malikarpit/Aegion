@@ -17,26 +17,27 @@ describe('Badge Component', () => {
   });
 
   it('renders with variants correctly', () => {
-    const { container: primaryContainer } = render(<Badge variant="primary">Primary</Badge>);
-    expect((primaryContainer.firstChild as HTMLElement).className).toContain('bg-white/10');
-    expect((primaryContainer.firstChild as HTMLElement).className).toContain('text-white');
+    const { container: neutralContainer } = render(<Badge variant="neutral">Neutral</Badge>);
+    expect((neutralContainer.firstChild as HTMLElement).className).toContain('bg-white/5');
+    expect((neutralContainer.firstChild as HTMLElement).className).toContain('text-slate-400');
 
     const { container: successContainer } = render(<Badge variant="success">Success</Badge>);
     expect((successContainer.firstChild as HTMLElement).className).toContain('bg-emerald-500/10');
     expect((successContainer.firstChild as HTMLElement).className).toContain('text-emerald-400');
   });
 
-  it('renders dot indicator when showDot is true', () => {
-    const { container } = render(<Badge showDot variant="success">With Dot</Badge>);
-    // Look for the dot span
-    const dot = container.querySelector('span.w-1\\.5.h-1\\.5');
-    expect(dot).toBeInTheDocument();
-    expect(dot?.className).toContain('bg-emerald-400');
+  it('renders dot indicator when dot is true', () => {
+    const { container } = render(<Badge dot variant="success">With Dot</Badge>);
+    // Look for the inner dot span with bg-current
+    const dotWrapper = container.querySelector('span.relative.flex');
+    expect(dotWrapper).toBeInTheDocument();
+    const innerDot = container.querySelector('span.bg-current:not(.animate-ping)');
+    expect(innerDot).toBeInTheDocument();
   });
 
   it('renders pulse animation when pulse is true', () => {
-    const { container } = render(<Badge showDot pulse variant="danger">Pulse</Badge>);
-    const dot = container.querySelector('span.w-1\\.5.h-1\\.5');
-    expect(dot?.className).toContain('animate-ping');
+    const { container } = render(<Badge dot pulse variant="danger">Pulse</Badge>);
+    const pulseDot = container.querySelector('.animate-ping');
+    expect(pulseDot).toBeInTheDocument();
   });
 });
