@@ -66,6 +66,31 @@
                     "contextualTitle": "Current Session"
                 },
                 {
+                    "id": "aegion.views.proposals",
+                    "name": "Proposals & Decisions",
+                    "icon": "$(git-pull-request)"
+                },
+                {
+                    "id": "aegion.views.sessions",
+                    "name": "Session History",
+                    "icon": "$(history)"
+                },
+                {
+                    "id": "aegion.views.timeline",
+                    "name": "Project Timeline",
+                    "icon": "$(pulse)"
+                },
+                {
+                    "id": "aegion.views.risks",
+                    "name": "Risk Observatory",
+                    "icon": "$(warning)"
+                },
+                {
+                    "id": "aegion.views.costs",
+                    "name": "Cost Analysis",
+                    "icon": "$(credit-card)"
+                },
+                {
                     "id": "aegion.views.governance",
                     "name": "Governance Queue",
                     "icon": "$(law)",
