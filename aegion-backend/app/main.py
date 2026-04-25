@@ -15,7 +15,7 @@ from .core.config import settings
 from .core.cloud_logging import logger
 from .api.v1 import router as api_v1_router
 from .api.v1 import features
-from .api.v1 import sentinel
+from .core.route_validator import validate_route_uniqueness
 
 # Middleware imports
 from .middleware.forensic_readiness import CorrelationIDMiddleware
@@ -89,6 +89,55 @@ async def lifespan(app: FastAPI):
     # Simple init for now
     app.state.council_service = CouncilService(repository=council_repo)
 
+    # Initialize ACK (Aegion Council Kernel) Engine
+    try:
+        from app.services.council_kernel.engine import CouncilEngine
+        council_engine = CouncilEngine()
+
+        # Collect API keys from environment variables
+        api_keys = {}
+        env_key_map = {
+            "openai_key": "OPENAI_API_KEY",
+            "anthropic_key": "ANTHROPIC_API_KEY",
+            "deepseek_key": "DEEPSEEK_API_KEY",
+            "google_key": "GOOGLE_API_KEY",
+            "xai_key": "XAI_API_KEY",
+            "mistral_key": "MISTRAL_API_KEY",
+            "cohere_key": "COHERE_API_KEY",
+            "ollama_url": "OLLAMA_URL",
+        }
+        for key_name, env_var in env_key_map.items():
+            val = os.environ.get(env_var)
+            if val:
+                api_keys[key_name] = val
+
+        # Also try Vault for any keys stored there
+        try:
+            from app.services.vault import get_vault
+            vault = get_vault()
+            for key_name, env_var in env_key_map.items():
+                if key_name not in api_keys:
+                    vault_val = vault.get_secret(env_var, actor_id="council_engine")
+                    if vault_val:
+                        api_keys[key_name] = vault_val
+        except Exception:
+            pass  # Vault may not be initialized yet
+
+        if api_keys:
+            await council_engine.configure(api_keys)
+            logger.info(f"ACK Council Engine configured with {len(council_engine.model_router.providers)} providers")
+        else:
+            logger.warning("ACK Council Engine initialized with NO providers (no API keys found)")
+
+        app.state.council_engine = council_engine
+
+        # Wire engine into v1 CouncilService for bridged LLM calls
+        app.state.council_service.council_engine = council_engine
+
+    except Exception as e:
+        logger.warning(f"ACK Council Engine initialization failed (non-fatal): {e}")
+        app.state.council_engine = None
+
     # Initialize & Hydrate Timeline Service
     timeline_service = get_timeline_service(event_store)
     await timeline_service.hydrate()
@@ -102,6 +151,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to hydrate conflict service: {e}")
 
     from .services.graph_provider import initialize_graph, shutdown_graph
+    
+    # Initialize Vault (loads secrets from Supabase vault_secrets table)
+    try:
+        from .services.vault import get_vault
+        vault = get_vault()
+        await vault.initialize()
+        logger.info("Aegion startup: vault initialized")
+    except Exception as e:
+        logger.warning(f"Vault initialization failed (non-fatal, using env fallback): {e}")
+    
     try:
         logger.info("Aegion startup: initializing graph...")
         await initialize_graph()
@@ -109,7 +168,9 @@ async def lifespan(app: FastAPI):
         logger.critical(f"🔥🔥🔥 Deployment Failed: Graph backend unreachable. {e}")
         # We must re-raise to abort startup
         raise RuntimeError("Graph backend initialization failed") from e
-    logger.info("Aegion startup: graph ready")
+    # ── Route Uniqueness Validation ──
+    validate_route_uniqueness(app)
+    logger.info("Aegion startup: all routes validated, graph ready")
     yield
     # ── Shutdown ──
     logger.info("Aegion shutdown: closing graph backend...")
@@ -209,7 +270,6 @@ setup_instrumentation(app)
 # ── API v1 Routes ────────────────────────────────────────────────────────
 app.include_router(api_v1_router, prefix=settings.api_prefix)
 app.include_router(features.router, prefix=f"{settings.api_prefix}/system")
-app.include_router(sentinel.router, prefix=settings.api_prefix)
 
 
 # ── Stable OpenAPI schema (frozen contract) ──

@@ -8,6 +8,15 @@ Enforces tool execution boundaries:
 - Per-tool permission scoping
 
 Doctrine: "Tools are extensions of an agent's senses, not its authority."
+
+Platform Notes:
+    Seccomp (Linux syscall filtering) is a kernel-level sandbox mechanism
+    available only on Linux. On macOS/Windows development environments,
+    seccomp is not applicable. This module provides **application-level**
+    authority enforcement (permission scoping, command interception, result
+    classification) that works on all platforms. For production Linux
+    deployments, layer OS-level seccomp profiles via Docker's
+    ``--security-opt seccomp=profile.json`` flag.
 """
 
 from enum import Enum
