@@ -5,8 +5,8 @@ export default function AdminPage() {
     return (
         <div className="p-8 h-full flex flex-col">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold text-white mb-2">Mission Control</h1>
-                <p className="text-slate-400">System-wide Governance & Emergency Protocols</p>
+                <h1 className="text-3xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>Mission Control</h1>
+                <p style={{ color: "var(--text-secondary)" }}>System-wide Governance &amp; Emergency Protocols</p>
             </div>
 
             <StatusControls />
