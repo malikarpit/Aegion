@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   // Override in CI/CD with the actual Cloud Run URL.
   env: {
     NEXT_PUBLIC_API_URL:
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   },
 
   // Trailing slashes produce index.html files per route — required for
